@@ -1,0 +1,74 @@
+import math
+from .optimizer import Optimizer
+
+
+class AdamW(Optimizer):
+    """Implements AdamW algorithm.
+
+    .. _AdamW\: Fixing Weight Decay Regularization in Adam:
+       https://openreview.net/forum?id=rk6qdGgCZ&noteId=rk6qdGgCZ
+    """
+
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
+                 weight_decay=0):
+        defaults = dict(lr=lr, betas=betas, eps=eps,
+                        weight_decay=weight_decay)
+        super(AdamW, self).__init__(params, defaults)
+
+    def step(self, closure=None):
+        """Introduce eta."""
+        loss = None
+        if closure is not None:
+            loss = closure()
+
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                grad = p.grad.data
+                state = self.state[p]
+
+                # State initialization
+                if len(state) == 0:
+                    state['step'] = 0
+                    # Exponential moving average of gradient values
+                    state['exp_avg'] = grad.new().resize_as_(grad).zero_()
+                    # Exponential moving average of squared gradient values
+                    state['exp_avg_sq'] = grad.new().resize_as_(grad).zero_()
+
+                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+                beta1, beta2 = group['betas']
+
+                state['step'] += 1
+
+                # summation below is original/naive Adam algorithm
+                '''
+                if group['weight_decay'] != 0:
+                    grad = grad.add(group['weight_decay'], p.data)
+                '''
+
+                # Decay the first and second moment running avarage coefficient
+                exp_avg.mul_(beta1).add_(1 - beta1, grad)
+                exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+
+                denom = exp_avg_sq.sqrt().add_(group['eps'])
+
+                bias_correction1 = 1 - beta1 ** state['step']
+                bias_correction2 = 1 - beta2 ** state['step']
+                step_size = group['lr'] * \
+                    math.sqrt(bias_correction2) / bias_correction1
+                if group['weight_decay'] != 0:
+                    step_size = step_size.add(group['weight_decay'], p.data)
+                p.data.addcdiv_(-step_size, exp_avg, denom)
+
+
+def _normalized_weight_decay(w, batch_size, B, T):
+    """Normalize weight decay.
+
+    Args:
+        w: weight decay
+        batch_size: batch_size
+        B: total number of training points
+        T: total number of epochs with in the i-th run
+    """
+    return w.mul(math.sqrt(batch_size / (B * T)))
