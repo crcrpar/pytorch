@@ -68,7 +68,8 @@ def _normalized_weight_decay(w, batch_size, B, T):
     Args:
         w: weight decay
         batch_size: batch_size
-        B: total number of training points
+        B: total number of training points, i.e., the number of points in
+            training dataset.
         T: total number of epochs with in the i-th run
     """
     return w.mul(math.sqrt(batch_size / (B * T)))
