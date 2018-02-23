@@ -661,6 +661,16 @@ Utilities
 
 .. autofunction:: torch.nn.utils.clip_grad_norm
 
+:hidden:`spectral_norm`
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: torch.nn.utils.spectral_norm
+
+:hidden:`remove_spctral_norm`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: torch.nn.utils.remove_spectral_norm
+
 :hidden:`weight_norm`
 ~~~~~~~~~~~~~~~~~~~~~
 

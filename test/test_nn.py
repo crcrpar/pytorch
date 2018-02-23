@@ -1071,6 +1071,13 @@ class TestNN(NNTestCase):
         sample = next(model.parameters())[0, 0, 0]
         self.assertTrue(torch.equal(sample.data, vec.data[:5]))
 
+    def test_spectral_norm(self):
+        # TODO(crcrpar)
+        input = Variable(torch.randn(3, 3, 32, 32))
+        m = nn.Conv2d(3, 10, 3, 1, 1)
+        # add spectral normalization
+        m = torch.nn.utils.spectral_norm(m)
+
     def test_weight_norm(self):
         input = Variable(torch.randn(3, 5))
         m = nn.Linear(5, 7)
