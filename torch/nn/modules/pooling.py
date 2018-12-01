@@ -807,15 +807,19 @@ class _AdaptiveMaxPoolNd(Module):
     def extra_repr(self):
         return 'output_size={}'.format(self.output_size)
 
-# FIXME (by @ssnl): Improve adaptive pooling docs: specify what the input and
-#   output shapes are, and how the operation computes output.
-
 
 class AdaptiveMaxPool1d(_AdaptiveMaxPoolNd):
     r"""Applies a 1D adaptive max pooling over an input signal composed of several input planes.
 
-    The output size is H, for any input size.
-    The number of output features is equal to the number of input planes.
+    For any input of size :math:`(N, C, H_{\text{in}})`,
+    the output has the size of :math:`(N, C, H_{\text{out}})`.
+    :math:`H_{\text{out}}` is defined when this is instantiated.
+
+    For each input of size :math:`(N, C, H_{\text{in}})`, kernel size is defined by
+    :math:`k = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
+    Then make :math:`H_{text{out}}` grids that have lenght of :math:`k`.
+    Here, some grids share some values.
+    After this, 1D max pooling with kernel of size :math:`k` is applied.
 
     Args:
         output_size: the target output size H
@@ -827,6 +831,8 @@ class AdaptiveMaxPool1d(_AdaptiveMaxPoolNd):
         >>> m = nn.AdaptiveMaxPool1d(5)
         >>> input = torch.randn(1, 64, 8)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 5])
 
     """
 
@@ -837,8 +843,16 @@ class AdaptiveMaxPool1d(_AdaptiveMaxPoolNd):
 class AdaptiveMaxPool2d(_AdaptiveMaxPoolNd):
     r"""Applies a 2D adaptive max pooling over an input signal composed of several input planes.
 
-    The output is of size H x W, for any input size.
-    The number of output features is equal to the number of input planes.
+    For any input of size :math:`(N, C, H_{\text{in}}, W_{\text{in}})`, the output has
+    the size of :math:`(N, C, H_{\text{out}}, W_{\text{out}})`.
+    :math:`(H_{\text{out}}, W_{\text{out}})` is defined when this is instantiated.
+
+    For each input of size :math:`(N, C, H_{\text{in}}, W_{\text{out}})`,
+    the kernel size is calculated by :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`
+    and :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
+    Then make :math:`H_{\text{out}} \times W_{\text{in}}` grids with size of :math:`(k_{W}, k_{H})`
+    allowing some pixels to be shared in 2 adjacent grids.
+    After this, 2D max pooling with kernel of size :math:`(k_{H}, k_{W})` is applied.
 
     Args:
         output_size: the target output size of the image of the form H x W.
@@ -853,14 +867,20 @@ class AdaptiveMaxPool2d(_AdaptiveMaxPoolNd):
         >>> m = nn.AdaptiveMaxPool2d((5,7))
         >>> input = torch.randn(1, 64, 8, 9)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 5, 7])
         >>> # target output size of 7x7 (square)
         >>> m = nn.AdaptiveMaxPool2d(7)
         >>> input = torch.randn(1, 64, 10, 9)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 7, 7])
         >>> # target output size of 10x7
         >>> m = nn.AdaptiveMaxPool2d((None, 7))
         >>> input = torch.randn(1, 64, 10, 9)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 10, 7])
 
     """
 
@@ -871,8 +891,18 @@ class AdaptiveMaxPool2d(_AdaptiveMaxPoolNd):
 class AdaptiveMaxPool3d(_AdaptiveMaxPoolNd):
     r"""Applies a 3D adaptive max pooling over an input signal composed of several input planes.
 
-    The output is of size D x H x W, for any input size.
-    The number of output features is equal to the number of input planes.
+    For any input of size :math:`(N, C, D_{\text{in}}, H_{\text{in}}, W_{\text{in}})`, the output has
+    the size of :math:`(N, C, D_{\text{in}}, H_{\text{out}}, W_{\text{out}})`.
+    :math:`(D_{\text{out}}, H_{\text{out}}, W_{\text{out}})` is defined when this is instantiated.
+
+    For each input of size :math:`(N, C, D_{\text{in}}, H_{\text{in}}, W_{\text{out}})`,
+        the kernel size is calculated by
+        :math:`k_{D} = (D_{\text{in}} + D_{\text{out}} + 1) // D_{\text{out}}`,
+        :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`, and
+        :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
+        Then make :math:`D_{\text{out}} \times H_{\text{out}} \times W_{\text{in}}` grids
+        with size of :math:`(k_{D}, k_{W}, k_{H})` allowing some pixels to be shared in 2 adjacent grids.
+        After this, 3D max pooling with kernel of size :math:`(k_{D}, k_{H}, k_{W})` is applied.
 
     Args:
         output_size: the target output size of the image of the form D x H x W.
@@ -888,14 +918,20 @@ class AdaptiveMaxPool3d(_AdaptiveMaxPoolNd):
         >>> m = nn.AdaptiveMaxPool3d((5,7,9))
         >>> input = torch.randn(1, 64, 8, 9, 10)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 5, 7, 9])
         >>> # target output size of 7x7x7 (cube)
         >>> m = nn.AdaptiveMaxPool3d(7)
         >>> input = torch.randn(1, 64, 10, 9, 8)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 7, 7, 7])
         >>> # target output size of 7x9x8
         >>> m = nn.AdaptiveMaxPool3d((7, None, None))
         >>> input = torch.randn(1, 64, 10, 9, 8)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 7, 9, 8])
 
     """
 
@@ -916,8 +952,11 @@ class _AdaptiveAvgPoolNd(Module):
 class AdaptiveAvgPool1d(_AdaptiveAvgPoolNd):
     r"""Applies a 1D adaptive average pooling over an input signal composed of several input planes.
 
-    The output size is H, for any input size.
-    The number of output features is equal to the number of input planes.
+    For each input of size :math:`(N, C, H_{\text{in}})`, kernel size is defined by
+    :math:`k = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
+    Then make :math:`H_{text{out}}` grids that have lenght of :math:`k`.
+    Here, some grids share some values.
+    After this, 1D average pooling with kernel of size :math:`k` is applied.
 
     Args:
         output_size: the target output size H
@@ -927,6 +966,8 @@ class AdaptiveAvgPool1d(_AdaptiveAvgPoolNd):
         >>> m = nn.AdaptiveAvgPool1d(5)
         >>> input = torch.randn(1, 64, 8)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 5])
 
     """
 
@@ -937,8 +978,12 @@ class AdaptiveAvgPool1d(_AdaptiveAvgPoolNd):
 class AdaptiveAvgPool2d(_AdaptiveAvgPoolNd):
     r"""Applies a 2D adaptive average pooling over an input signal composed of several input planes.
 
-    The output is of size H x W, for any input size.
-    The number of output features is equal to the number of input planes.
+    For each input of size :math:`(N, C, H_{\text{in}}, W_{\text{out}})`,
+    the kernel size is calculated by :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`
+    and :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
+    Then make :math:`H_{\text{out}} \times W_{\text{in}}` grids with size of :math:`(k_{W}, k_{H})`
+    allowing some pixels to be shared in 2 adjacent grids.
+    After this, 2D average pooling with kernel of size :math:`(k_{H}, k_{W})` is applied.
 
     Args:
         output_size: the target output size of the image of the form H x W.
@@ -951,14 +996,20 @@ class AdaptiveAvgPool2d(_AdaptiveAvgPoolNd):
         >>> m = nn.AdaptiveAvgPool2d((5,7))
         >>> input = torch.randn(1, 64, 8, 9)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 5, 7])
         >>> # target output size of 7x7 (square)
         >>> m = nn.AdaptiveAvgPool2d(7)
         >>> input = torch.randn(1, 64, 10, 9)
         >>> output = m(input)
-        >>> # target output size of 10x7
+        >>> output.size()
+        torch.Size([1, 64, 7, 7])
+        >>> # target output size of 10x7 (height of output is the same as that of input)
         >>> m = nn.AdaptiveMaxPool2d((None, 7))
         >>> input = torch.randn(1, 64, 10, 9)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 10, 7])
 
     """
 
@@ -969,8 +1020,14 @@ class AdaptiveAvgPool2d(_AdaptiveAvgPoolNd):
 class AdaptiveAvgPool3d(_AdaptiveAvgPoolNd):
     r"""Applies a 3D adaptive average pooling over an input signal composed of several input planes.
 
-    The output is of size D x H x W, for any input size.
-    The number of output features is equal to the number of input planes.
+    For each input of size :math:`(N, C, D_{\text{in}}, H_{\text{in}}, W_{\text{out}})`,
+        the kernel size is calculated by
+        :math:`k_{D} = (D_{\text{in}} + D_{\text{out}} + 1) // D_{\text{out}}`,
+        :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`, and
+        :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
+        Then make :math:`D_{\text{out}} \times H_{\text{out}} \times W_{\text{in}}` grids
+        with size of :math:`(k_{D}, k_{W}, k_{H})` allowing some pixels to be shared in 2 adjacent grids.
+        After this, 3D max pooling with kernel of size :math:`(k_{D}, k_{H}, k_{W})` is applied.
 
     Args:
         output_size: the target output size of the form D x H x W.
@@ -983,14 +1040,20 @@ class AdaptiveAvgPool3d(_AdaptiveAvgPoolNd):
         >>> m = nn.AdaptiveAvgPool3d((5,7,9))
         >>> input = torch.randn(1, 64, 8, 9, 10)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 5, 7, 9])
         >>> # target output size of 7x7x7 (cube)
         >>> m = nn.AdaptiveAvgPool3d(7)
         >>> input = torch.randn(1, 64, 10, 9, 8)
         >>> output = m(input)
-        >>> # target output size of 7x9x8
+        >>> output.size()
+        torch.Size([1, 64, 7, 7, 7])
+        >>> # target output size of 7x9x8 (H and W of output are the same as those of input)
         >>> m = nn.AdaptiveMaxPool3d((7, None, None))
         >>> input = torch.randn(1, 64, 10, 9, 8)
         >>> output = m(input)
+        >>> output.size()
+        torch.Size([1, 64, 7, 9, 8])
 
     """
 
