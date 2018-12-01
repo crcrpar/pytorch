@@ -817,7 +817,8 @@ class AdaptiveMaxPool1d(_AdaptiveMaxPoolNd):
 
     For each input of size :math:`(N, C, H_{\text{in}})`, kernel size is defined by
     :math:`k = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
-    Then make :math:`H_{text{out}}` grids that have lenght of :math:`k`.
+    Then make :math:`H_{text{out}}` grids that have lenght of :math:`k`
+    allowing some pixels to be shared by 2 adjacent grids.
     Here, some grids share some values.
     After this, 1D max pooling with kernel of size :math:`k` is applied.
 
@@ -851,7 +852,7 @@ class AdaptiveMaxPool2d(_AdaptiveMaxPoolNd):
     the kernel size is calculated by :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`
     and :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
     Then make :math:`H_{\text{out}} \times W_{\text{in}}` grids with size of :math:`(k_{W}, k_{H})`
-    allowing some pixels to be shared in 2 adjacent grids.
+    allowing some pixels to be shared by 2 adjacent grids.
     After this, 2D max pooling with kernel of size :math:`(k_{H}, k_{W})` is applied.
 
     Args:
@@ -901,7 +902,7 @@ class AdaptiveMaxPool3d(_AdaptiveMaxPoolNd):
         :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`, and
         :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
         Then make :math:`D_{\text{out}} \times H_{\text{out}} \times W_{\text{in}}` grids
-        with size of :math:`(k_{D}, k_{W}, k_{H})` allowing some pixels to be shared in 2 adjacent grids.
+        with size of :math:`(k_{D}, k_{W}, k_{H})` allowing some pixels to be shared by 2 adjacent grids.
         After this, 3D max pooling with kernel of size :math:`(k_{D}, k_{H}, k_{W})` is applied.
 
     Args:
@@ -982,7 +983,7 @@ class AdaptiveAvgPool2d(_AdaptiveAvgPoolNd):
     the kernel size is calculated by :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`
     and :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
     Then make :math:`H_{\text{out}} \times W_{\text{in}}` grids with size of :math:`(k_{W}, k_{H})`
-    allowing some pixels to be shared in 2 adjacent grids.
+    allowing some pixels to be shared by 2 adjacent grids.
     After this, 2D average pooling with kernel of size :math:`(k_{H}, k_{W})` is applied.
 
     Args:
@@ -1026,7 +1027,7 @@ class AdaptiveAvgPool3d(_AdaptiveAvgPoolNd):
         :math:`k_{H} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{text{out}}`, and
         :math:`k_{W} = (H_{\text{in}} + H_{\text{out}} + 1) // H_{\text{out}}`.
         Then make :math:`D_{\text{out}} \times H_{\text{out}} \times W_{\text{in}}` grids
-        with size of :math:`(k_{D}, k_{W}, k_{H})` allowing some pixels to be shared in 2 adjacent grids.
+        with size of :math:`(k_{D}, k_{W}, k_{H})` allowing some pixels to be shared by 2 adjacent grids.
         After this, 3D max pooling with kernel of size :math:`(k_{D}, k_{H}, k_{W})` is applied.
 
     Args:
