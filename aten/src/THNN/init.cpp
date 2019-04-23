@@ -184,9 +184,6 @@
 #include <THNN/generic/VolumetricAdaptiveMaxPooling.c>
 #include <TH/THGenerateFloatTypes.h>
 
-#include <THNN/generic/VolumetricAdaptiveAveragePooling.c>
-#include <TH/THGenerateFloatTypes.h>
-
 #include <THNN/generic/VolumetricDilatedMaxPooling.c>
 #include <TH/THGenerateFloatTypes.h>
 
