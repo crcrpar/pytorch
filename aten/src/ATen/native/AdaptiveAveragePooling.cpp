@@ -103,7 +103,7 @@ namespace {
     {
       output.resize_({sizeD, osizeH, osizeW});
 
-      AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "adaptive_avg_pool2d_cpu", [&] {
+      AT_DISPATCH_FLOATING_TYPES_AND_HALF(input.scalar_type(), "adaptive_avg_pool2d_cpu", [&] {
           auto input_data = input.data<scalar_t>();
           auto output_data = output.data<scalar_t>();
           adaptive_avg_pool2d_out_frame<scalar_t>(input_data, output_data,
@@ -122,7 +122,7 @@ namespace {
       at::parallel_for(0, input.size(0), 0, [&](int64_t start, int64_t end) {
         for (auto b = start; b < end; b++)
         {
-          AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "adaptive_avg_pool2d_cpu", [&] {
+          AT_DISPATCH_FLOATING_TYPES_AND_HALF(input.scalar_type(), "adaptive_avg_pool2d_cpu", [&] {
               auto input_data = input.data<scalar_t>();
               auto output_data = output.data<scalar_t>();
               adaptive_avg_pool2d_out_frame<scalar_t>(input_data+b*input.stride(0), output_data+b*sizeD*osizeH*osizeW,
@@ -204,7 +204,7 @@ namespace {
     /* backprop */
     if (input.ndimension() == 3)
     {
-      AT_DISPATCH_FLOATING_TYPES(
+      AT_DISPATCH_FLOATING_TYPES_AND_HALF(
         input.scalar_type(), "adaptive_avg_pool2d_backward_cpu", [&] {
           /* get raw pointers */
           scalar_t *gradInput_data = gradInput.data<scalar_t>();
@@ -223,7 +223,7 @@ namespace {
       at::parallel_for(0, input.size(0), 0, [&](int64_t start, int64_t end) {
         for (auto b = start; b < end; b++)
         {
-          AT_DISPATCH_FLOATING_TYPES(
+          AT_DISPATCH_FLOATING_TYPES_AND_HALF(
             input.scalar_type(), "adaptive_avg_pool2d_backward_cpu", [&] {
               /* get raw pointers */
               scalar_t *gradInput_data = gradInput.data<scalar_t>();
