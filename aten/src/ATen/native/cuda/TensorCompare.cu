@@ -53,4 +53,15 @@ Tensor _s_where_cuda(
   });
   return ret;
 }
+
+Tensor _s_inplace_where_cuda(
+    const Tensor& condition,
+    Tensor& self,
+    const Tensor& other) {
+  AT_DISPATCH_ALL_TYPES_AND2(at::ScalarType::Half, at::ScalarType::Bool, self.scalar_type(), "inplace_where_cuda", [&] {
+      where_cuda<scalar_t>(self, condition, self, other);
+      })
+  return self;
+}
+
 }} // namespace at::native

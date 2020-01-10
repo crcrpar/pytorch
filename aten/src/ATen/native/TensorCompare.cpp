@@ -117,6 +117,16 @@ Tensor where(const Tensor& condition, const Tensor& self, const Tensor& other) {
   return at::_s_where(b_condition, b_self, b_other);
 }
 
+Tensor where_(const Tensor& condition, Tensor& self, const Tensor& other) {
+  if (condition.scalar_type() != ScalarType::Byte && condition.scalar_type() != ScalarType::Bool) {
+    AT_ERROR("Expected condition to have ScalarType Byte, but got ScalarType ",
+                  toString(condition.scalar_type()));
+  }
+  Tensor b_condition, b_self, b_other;
+  std::tie(b_condition b_self, b_other) = expand_outplace(condition, self, other, "where_");
+  return at::_s_inplace_where_cpu(b_condition, b_self, b_other);
+}
+
 std::vector<Tensor> where(const Tensor& condition) {
   return condition.nonzero_numpy();
 }
@@ -127,6 +137,13 @@ Tensor _s_where_cpu(const Tensor& condition, const Tensor& self, const Tensor& o
     where_cpu<scalar_t>(ret, condition, self, other);
   });
   return ret;
+}
+
+Tensor _s_inplace_where_cpu(const Tensor& condition, Tensor& self, const Tensor& other) {
+  AT_DISPATCH_ALL_TYPES(self.scalar_type(), "inplace_where_cpu", [&] {
+      where_cpu<scalar_type>(self, condition, self, other);
+  });
+  return self;
 }
 
 std::tuple<Tensor, Tensor> mode(const Tensor& self, int64_t dim, bool keepdim) {
