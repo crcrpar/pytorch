@@ -80,7 +80,7 @@ __global__ void stochastic_rounding_sgd_step_kernel(
 Tensor stochastic_rounding_sgd_step_cuda(
     Tensor& param, const Tensor& grad, Tensor& momentum_buffer,
     const Tensor& inv_scale, const Tensor& found_inf,
-    float weight_decay, float momentum, float dampening, float lr,
+    double weight_decay, double momentum, double dampening, double lr,
     bool nesterov, bool first_run, Generator gen_) {
 
   if (param.numel() == 0) return param;
@@ -120,13 +120,13 @@ Tensor stochastic_rounding_sgd_step_cuda(
   }
 
   AT_DISPATCH_FLOATING_TYPES_AND_HALF(
-        param.scalar_type(), "_stochastic_rounding_sgd_step_cuda", [&] {
+        param.scalar_type(), "stochastic_rounding_sgd_step_cuda", [&] {
         stochastic_rounding_sgd_step_kernel<scalar_t><<<grid, dim_block, 0, c10::cuda::getCurrentCUDAStream()>>>(
             param.data_ptr<scalar_t>(),
             grad.data_ptr<scalar_t>(),
             momentum_buffer.data_ptr<scalar_t>(),
             inv_scale_value, found_inf_value,
-            weight_decay, momentum, dampening, lr,
+            static_cast<float>(weight_decay), static_cast<float>(momentum), static_cast<float>(dampening), static_cast<float>(lr),
             nesterov, first_run, numel, rng_engine_inputs);
       });
   return param;
