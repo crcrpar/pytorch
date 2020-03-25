@@ -6669,3 +6669,8 @@
   variants: function
   device_guard: False
   supports_named_tensor: True
+
+- func: stochastic_rounding_sgd_step(Tensor(a!) param, Tensor grad, Tensor(b!) momentum_buffer, Tensor inv_scale, Tensor found_inf, float weight_decay, float momentum, float dampening, float lr, bool nesterov, bool first_run, Generator? generator=None) -> Tensor(a!)
+  variants: function
+  dispatch:
+    CUDA: stochastic_rounding_sgd_step_cuda
