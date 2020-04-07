@@ -299,6 +299,7 @@ Pointwise Ops
     sinh
     sqrt
     square
+    stochastic_rounding
     tan
     tanh
     true_divide
