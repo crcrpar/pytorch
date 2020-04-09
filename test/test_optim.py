@@ -1870,5 +1870,84 @@ class TestSWAUtils(TestCase):
         self.assertEqual(dnn.bn.momentum, 0.3)
 
 
+class TestStochasticRoundingOptim(TestCase):
+
+    exact_dtype = True
+
+    def _test_basic_cases_template(
+            self, weight, bias, input, constructor, grad_scaler=None):
+
+        def _calc_loss(weight, bias, input):
+            y = weight.mv(input)
+            if y.get_device() != bias.get_device():
+                y = y.cuda(bias.get_device())
+            return (y + bias).pow(2).sum()
+
+        optimizer = constructor(weight, bias)
+        initial_value = None
+        for _i in range(10):
+            optimizer.zero_grad()
+            loss = _calc_loss(weight, bias, input)
+            if grad_scaler is None:
+                loss.backward()
+                optimizer.step()
+            else:
+                grad_scaler.scale(loss).backward()
+                grad_scaler.step(optimizer)
+                grad_scaler.update()
+            if initial_value is None:
+                initial_value = loss.item()
+        self.assertLess(_calc_loss(weight, bias, input).item(), initial_value)
+
+        # Check whether weight and bias can be represented in 16 bits.
+        with torch.no_grad():
+            for param_group in optimizer.param_groups:
+                for p in param_group['params']:
+                    half_p = p.clone().detach().to(torch.half).to(weight.dtype)
+                    diff = (p - half_p).abs()
+                    self.assertTrue(torch.equal(diff, torch.zeros_like(diff)))
+
+    def _test_basic_cases(self, dtype, constructor, grad_scaler=None):
+        self._test_basic_cases_template(
+            torch.nn.Parameter(torch.randn(10, 5).cuda().to(dtype)),
+            torch.nn.Parameter(torch.randn(10).cuda().to(dtype)),
+            torch.randn(5, requires_grad=True).cuda().to(dtype),
+            constructor, grad_scaler)
+
+        if torch.cuda.device_count() > 1:
+            self._test_basic_cases_template(
+                torch.nn.Parameter(torch.randn(10, 5).cuda(0).to(dtype)),
+                torch.nn.Parameter(torch.randn(10).cuda(1).to(dtype)),
+                torch.randn(5).cuda(0).to(dtype),
+                constructor, grad_scaler)
+
+    def _test_without_GradScaler(self, opt):
+        if not torch.cuda.is_available():
+            return
+        for dtype in (torch.float16, torch.float32, torch.float64):
+            self._test_basic_cases(
+                dtype, lambda weight, bias: opt([weight, bias], lr=1e-2), None)
+
+    def _test_with_GradScaler(self, opt):
+        if not torch.cuda.is_available():
+            return
+        for dtype in (torch.float16, torch.float32):
+            self._test_basic_cases(
+                dtype, lambda weight, bias: opt([weight, bias], lr=1e-2),
+                torch.cuda.amp.GradScaler())
+
+    def test_SRAdam(self):
+        self._test_without_GradScaler(optim.SRAdam)
+        self._test_with_GradScaler(optim.SRAdam)
+
+    def test_SRAdamW(self):
+        self._test_without_GradScaler(optim.SRAdamW)
+        self._test_with_GradScaler(optim.SRAdamW)
+
+    def test_SRSGD(self):
+        self._test_without_GradScaler(optim.SRSGD)
+        self._test_with_GradScaler(optim.SRSGD)
+
+
 if __name__ == '__main__':
     run_tests()
