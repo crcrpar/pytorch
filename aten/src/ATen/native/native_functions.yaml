@@ -6720,7 +6720,7 @@
 - func: _test_serialization_subcmul(Tensor self, Tensor other, Scalar alpha=1) -> Tensor
   use_c10_dispatcher: full
 
-- func: stochastic_rounding(Tensor input, Tensor(a!) output, Generator? gen_=None) -> Tensor(a!)
+- func: stochastic_rounding(Tensor input, Generator? gen_=None) -> Tensor
   dispatch:
     CUDA: stochastic_rounding_cuda
 
