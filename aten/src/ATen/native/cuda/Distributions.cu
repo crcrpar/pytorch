@@ -175,8 +175,8 @@ Tensor _s_poisson_cuda(const Tensor& lambda, c10::optional<Generator> gen_) {
   return ret;
 }
 
-Tensor _s_binomial_cuda(const Tensor& count, const Tensor& prob, Generator* gen_) {
-  auto gen = get_generator_or_default<CUDAGenerator>(gen_, cuda::detail::getDefaultCUDAGenerator());
+Tensor _s_binomial_cuda(const Tensor& count, const Tensor& prob, Generator gen_) {
+  auto gen = get_generator_or_default<CUDAGeneratorImpl>(gen_, cuda::detail::getDefaultCUDAGenerator());
   std::pair<uint64_t, uint64_t> rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
