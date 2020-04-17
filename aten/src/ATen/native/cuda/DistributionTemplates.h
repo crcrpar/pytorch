@@ -3,6 +3,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
+#include <ATen/native/cuda/Loops.cuh>
 #include <c10/util/Half.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/cuda/detail/OffsetCalculator.cuh>
@@ -15,6 +16,8 @@
 #include <limits>
 #include <utility>
 #include <mutex>
+#include <tuple>
+#include <type_traits>
 
 namespace {
 
@@ -262,7 +265,6 @@ void distribution_binary_kernel(TensorIterator &iter, std::pair<uint64_t, uint64
   }
 }
 
->>>>>>> 359d096f87... use CPU/CUDAGeneratorImpl
 } // namespace
 
 namespace at {
