@@ -250,6 +250,7 @@ Pointwise Ops
 .. autofunction:: sinh
 .. autofunction:: sqrt
 .. autofunction:: square
+.. autofunction:: stochastic_rounding
 .. autofunction:: tan
 .. autofunction:: tanh
 .. autofunction:: true_divide
