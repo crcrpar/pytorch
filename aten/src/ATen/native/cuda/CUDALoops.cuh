@@ -318,4 +318,75 @@ void gpu_kernel_impl(TensorIterator& iter, const func_t& f) {
   }
 }
 
+namespace {
+template <typename T> struct is_tuple: std::false_type {};
+
+template <typename ...T> struct is_tuple<std::tuple<T...>>: std::true_type {};
+
+template <int current>
+struct multi_outputs_store_helper {
+  template<int ntensors, typename out_t, typename... Args>
+  C10_HOST_DEVICE static void apply(
+      int idx,
+      at::detail::Array<char*, ntensors> data,
+      at::detail::Array<uint32_t, ntensors> offsets,
+      at::detail::Array<ScalarType, ntensors> dtypes,
+      out_t ret) {
+    static_assert(is_tuple<out_t>::value);
+    c10::cast_and_store(dtypes[current], data[current] + offsets[current], std::get<current>(ret));
+  }
+};
+} // namespace
+
+template <typename func_t>
+void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
+  using traits = function_traits<func_t>;
+  using output_t = typename traits::result_type;
+  TORCH_INTERNAL_ASSERT(is_tuple<output_t>::value);
+  constexpr int num_outputs = std::tuple_size<output_t>::value;
+  TORCH_INTERNAL_ASSERT(num_outputs > 1);
+  constexpr int num_inputs = traits::arity;
+  constexpr int ntensors = num_outputs + num_inputs;
+
+  TORCH_INTERNAL_ASSERT(iter.can_use_32bit_indexing());
+  TORCH_INTERNAL_ASSERT(iter.ntensors() == ntensors);
+
+  at::detail::Array<char*, ntensors> data;
+  for (int i = 0; i < ntensors; i++) {
+    data[i] = (char*)iter.data_ptr(i);
+  }
+
+  int64_t numel = iter.numel();
+
+  bool contiguous = iter.is_contiguous();
+  bool dynamic_casting = needs_dynamic_casting<func_t>::check(iter);
+
+  at::detail::Array<ScalarType, ntensors> dtypes;
+  for (int i = 0; i < ntensors; i++) {
+    dtypes[i] = iter.tensor(i).scalar_type();
+  }
+
+  if (iter.is_trivial_1d()) {
+    auto inner_strides = iter.get_inner_strides();
+    at::detail::Array<int, ntensors> strides;
+    for (int i = 0; i < ntensors; i++) {
+      strides[i] = inner_strides[i];
+    }
+
+    auto offset_calc = ::make_offset_calculator<num_inputs + num_outputs>(iter);
+    legacy::launch_kernel<launch_size_1d, 1>(numel, [=] GPU_LAMBDA (int idx) {
+        auto offsets = offset_calc.get(idx);
+      output_t ret = legacy::invoke(f, &data.data[num_outputs], &offsets.data[num_outputs], &dtypes.data[num_outputs], 1);
+      memory::detail::static_unroll<multi_outputs_store_helper, num_outputs>::with_args(idx, data, offsets, dtypes, ret);
+    });
+  } else {
+    auto offset_calc = ::make_offset_calculator<num_inputs + num_outputs>(iter);
+    legacy::launch_kernel<launch_size_nd, launch_bound2>(numel, [=] GPU_LAMBDA(int idx) {
+      auto offsets = offset_calc.get(idx);
+      output_t ret = legacy::invoke(f, &data.data[num_outputs], &offsets.data[num_outputs], &dtypes.data[num_outputs], 1);
+      memory::detail::static_unroll<multi_outputs_store_helper, num_outputs>::with_args(idx, data, offsets, dtypes, ret);
+    });
+  }
+}
+
 }} // namespace at::native
