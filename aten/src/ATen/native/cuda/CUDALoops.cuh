@@ -297,30 +297,60 @@ void gpu_kernel_impl(TensorIterator& iter, const func_t& f) {
 }
 
 namespace {
-template <typename T> struct is_tuple: std::false_type {};
-
-template <typename ...T> struct is_tuple<std::tuple<T...>>: std::true_type {};
 
 template <int current>
-struct multi_outputs_store_helper {
-  template<int ntensors, typename out_t, typename... Args>
-  C10_HOST_DEVICE static void apply(
-      int idx,
-      at::detail::Array<char*, ntensors> data,
-      at::detail::Array<uint32_t, ntensors> offsets,
-      at::detail::Array<ScalarType, ntensors> dtypes,
-      out_t ret) {
-    static_assert(is_tuple<out_t>::value);
-    c10::cast_and_store(dtypes[current], data[current] + offsets[current], std::get<current>(ret));
+struct tuple_result_write_helper {
+  template <typename tuple_t>
+  static __device__ inline void apply(tuple_t src, tuple_t &dst) {
+    using T = std::tuple_element_t<current, tuple_t>;
+    auto src_value = reinterpret_cast<T>(std::get<current>(src));
+    std::get<current>(dst) = src_value;
   }
 };
+
 } // namespace
+
+template <int num_outputs, typename func_t, typename policy_t>
+__device__ inline void multi_outputs_elementwise_kernel_helper(func_t f, policy_t policy) {
+  using traits = function_traits<func_t>;
+  using return_t = typename traits::result_type;
+  using args_t = typename traits::ArgsTuple;
+
+  int idx = blockIdx.x;
+
+  return_t results[thread_work_size];
+  args_t args[thread_work_size];
+
+  // load
+  policy.load(args, idx);
+
+  // compute
+  #pragma unroll
+  for (int i = 0; i < thread_work_size; i++) {
+    if (policy.check_inbounds(i)) {
+      memory::detail::static_unroll<tuple_result_write_helper, num_outputs>::with_args(c10::guts::apply(f, args[i]), results[i]);
+    }
+  }
+
+  // store
+  policy.store(results, idx);
+}
+
+template <int num_outputs, typename func_t, typename data_t, typename dtypes_t, typename offset_calc_t>
+C10_LAUNCH_BOUNDS_1(num_threads)
+__global__ void multi_outputs_elementwise_kernel(int N, func_t func, data_t data, at::detail::Array<int, 2> n_inp_out, dtypes_t dtypes, offset_calc_t offset_calc) {
+  int remaining = N - block_work_size * blockIdx.x;
+  multi_outputs_elementwise_kernel_helper<num_outputs>(
+      func,
+      memory::policies::multi_outputs_unroll<num_outputs, data_t, dtypes_t, offset_calc_t>(
+        data, n_inp_out, dtypes, remaining, offset_calc));
+}
 
 template <typename func_t>
 void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
   using traits = function_traits<func_t>;
   using output_t = typename traits::result_type;
-  TORCH_INTERNAL_ASSERT(is_tuple<output_t>::value);
+  TORCH_INTERNAL_ASSERT(memory::detail::is_tuple<output_t>::value);
   constexpr int num_outputs = std::tuple_size<output_t>::value;
   TORCH_INTERNAL_ASSERT(num_outputs > 1);
   constexpr int num_inputs = traits::arity;
@@ -329,6 +359,10 @@ void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
   TORCH_INTERNAL_ASSERT(iter.can_use_32bit_indexing());
   TORCH_INTERNAL_ASSERT(iter.ntensors() == ntensors);
 
+  at::detail::Array<int, 2> n_inp_out;
+  n_inp_out[0] = num_outputs;
+  n_inp_out[1] = num_inputs;
+
   at::detail::Array<char*, ntensors> data;
   for (int i = 0; i < ntensors; i++) {
     data[i] = (char*)iter.data_ptr(i);
@@ -336,35 +370,15 @@ void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
 
-  bool contiguous = iter.is_contiguous();
-  bool dynamic_casting = needs_dynamic_casting<func_t>::check(iter);
-
   at::detail::Array<ScalarType, ntensors> dtypes;
   for (int i = 0; i < ntensors; i++) {
     dtypes[i] = iter.tensor(i).scalar_type();
   }
 
-  if (iter.is_trivial_1d()) {
-    auto inner_strides = iter.get_inner_strides();
-    at::detail::Array<int, ntensors> strides;
-    for (int i = 0; i < ntensors; i++) {
-      strides[i] = inner_strides[i];
-    }
-
-    auto offset_calc = ::make_offset_calculator<num_inputs + num_outputs>(iter);
-    legacy::launch_kernel<launch_size_1d, 1>(numel, [=] GPU_LAMBDA (int idx) {
-        auto offsets = offset_calc.get(idx);
-      output_t ret = legacy::invoke(f, &data.data[num_outputs], &offsets.data[num_outputs], &dtypes.data[num_outputs], 1);
-      memory::detail::static_unroll<multi_outputs_store_helper, num_outputs>::with_args(idx, data, offsets, dtypes, ret);
-    });
-  } else {
-    auto offset_calc = ::make_offset_calculator<num_inputs + num_outputs>(iter);
-    legacy::launch_kernel<launch_size_nd, launch_bound2>(numel, [=] GPU_LAMBDA(int idx) {
-      auto offsets = offset_calc.get(idx);
-      output_t ret = legacy::invoke(f, &data.data[num_outputs], &offsets.data[num_outputs], &dtypes.data[num_outputs], 1);
-      memory::detail::static_unroll<multi_outputs_store_helper, num_outputs>::with_args(idx, data, offsets, dtypes, ret);
-    });
-  }
+  auto offset_calc = ::make_offset_calculator<num_inputs + num_outputs>(iter);
+  int64_t grid = (numel + block_work_size - 1) / block_work_size;
+  auto stream = at::cuda::getCurrentCUDAStream();
+  multi_outputs_elementwise_kernel<num_outputs><<<grid, num_threads, 0, stream>>>(numel, f, data, n_inp_out, dtypes, offset_calc);
 }
 
 }} // namespace at::native
