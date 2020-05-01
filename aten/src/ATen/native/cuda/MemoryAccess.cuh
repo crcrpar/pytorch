@@ -98,7 +98,9 @@ struct multi_outputs_store_helper {
       at::detail::Array<ScalarType, ntensors> dtypes,
       out_t ret) {
     static_assert(is_tuple<out_t>::value);
-    c10::cast_and_store(dtypes[current], data[current] + offsets[current], std::get<current>(ret));
+    using T = std::tuple_element_t<current, out_t>;
+    auto ptr = reinterpret_cast<T *>(data[current]) + offsets[current];
+    std::get<current>(ret) = *ptr;
   }
 };
 
