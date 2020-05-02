@@ -37,25 +37,29 @@ struct needs_dynamic_casting<func_t, 0> {
   }
 };
 
-template<int N, int num_outputs = 1>
+template<int N>
 static OffsetCalculator<N> make_input_offset_calculator(const TensorIterator& iter) {
   // array size can not be 0, this happens when N == 0
   constexpr int array_size = std::max<int>(N, 1);
-  TORCH_INTERNAL_ASSERT(N == iter.ntensors() - num_outputs);
+  TORCH_INTERNAL_ASSERT(N == iter.ntensors() - iter.noutputs());
   std::array<const int64_t*, array_size> strides;
   int64_t element_sizes[array_size];
   for (int i = 0; i < N; i++) {
-    strides[i] = iter.strides(i + num_outputs).data();
-    element_sizes[i] = iter.element_size(i + num_outputs);
+    strides[i] = iter.strides(i + iter.noutputs()).data();
+    element_sizes[i] = iter.element_size(i + iter.noutputs());
   }
   return OffsetCalculator<N>(iter.ndim(), iter.shape().data(), strides.data(), element_sizes);
 }
 
-static OffsetCalculator<1> make_output_offset_calculator(const TensorIterator& iter) {
-  std::array<const int64_t*, 1> strides;
-  strides[0] = iter.strides(0).data();
-  int64_t element_size = iter.element_size(0);
-  return OffsetCalculator<1>(iter.ndim(), iter.shape().data(), strides.data(), &element_size);
+template <int num_outputs = 1>
+static OffsetCalculator<num_outputs> make_output_offset_calculator(const TensorIterator& iter) {
+  std::array<const int64_t*, num_outputs> strides;
+  int64_t element_sizes[num_outputs];
+  for (int i = 0; i < num_outputs; i++) {
+    strides[i] = iter.strides(i).data();
+    element_sizes[i] = iter.element_size(i);
+  }
+  return OffsetCalculator<num_outputs>(iter.ndim(), iter.shape().data(), strides.data(), element_sizes);
 }
 
 }}  // namespace at::native

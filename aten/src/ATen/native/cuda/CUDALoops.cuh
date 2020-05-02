@@ -151,7 +151,7 @@ __device__ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
   #pragma unroll
   for (int i = 0; i < thread_work_size; i++) {
     if (policy.check_inbounds(i)) {
-      policy.store_result(i, c10::guts::apply(f, args[i]), results);
+      results[i] = c10::guts::apply(f, args[i]);
     }
   }
 
@@ -333,13 +333,8 @@ void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
 
-  at::detail::Array<ScalarType, ntensors> dtypes;
-  for (int i = 0; i < ntensors; i++) {
-    dtypes[i] = iter.tensor(i).scalar_type();
-  }
-
-  auto input_calc = make_input_offset_calculator<num_inputs, num_outputs>(iter);
-  auto output_calc = ::make_offset_calculator<num_outputs>(iter);
+  auto input_calc = make_input_offset_calculator<num_inputs>(iter);
+  auto output_calc = make_output_offset_calculator<num_outputs>(iter);
   modern::launch_unrolled_kernel_for_multi_outputs<num_outputs>(numel, f, data, input_calc, output_calc);
 }
 

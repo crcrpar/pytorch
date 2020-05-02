@@ -160,11 +160,6 @@ struct unroll {
       thread_idx += num_threads;
     }
   }
-
-  template <typename scalar_t>
-  __device__ inline void store_result(int i, scalar_t f_return, scalar_t *results) {
-    results[i] = f_return;
-  }
 };
 
 // Assumption:
@@ -224,11 +219,6 @@ struct vectorized {
       to_[index] = v;
     }
   }
-
-  template <typename scalar_t>
-    __device__ inline void store_result(int i, scalar_t f_return, scalar_t *results) {
-      results[i] = f_return;
-    }
 };
 
 template <typename data_t, typename inp_calc_t, typename out_calc_t, int num_outputs>
@@ -250,11 +240,6 @@ struct multi_outputs_unroll : unroll<data_t, inp_calc_t, out_calc_t, num_outputs
       memory::detail::static_unroll<detail::multi_outputs_store_helper, num_outputs>::with_args(this->data, offsets, from[i]);
       thread_idx += num_threads;
     }
-  }
-
-  template <typename return_t>
-  __device__ inline void store_result(int i, return_t f_return, return_t *results) {
-    memory::detail::static_unroll<detail::tuple_result_write_helper, num_outputs>::with_args(f_return, results[i]);
   }
 };
 
