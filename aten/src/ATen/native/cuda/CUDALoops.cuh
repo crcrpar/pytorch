@@ -151,7 +151,7 @@ __device__ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
   #pragma unroll
   for (int i = 0; i < thread_work_size; i++) {
     if (policy.check_inbounds(i)) {
-      results[i] = c10::guts::apply(f, args[i]);
+      policy.store_result(i, c10::guts::apply(f, args[i]), results);
     }
   }
 
@@ -180,6 +180,14 @@ C10_LAUNCH_BOUNDS_1(num_threads)
 __global__ void unrolled_elementwise_kernel(int N, func_t f, array_t data, inp_calc_t ic, out_calc_t oc) {
   int remaining = N - block_work_size * blockIdx.x;
   elementwise_kernel_helper(f, memory::policies::unroll<array_t, inp_calc_t, out_calc_t>(data, remaining, ic, oc));
+}
+
+template<int num_outputs, typename func_t, typename array_t, typename inp_calc_t, typename out_calc_t>
+C10_LAUNCH_BOUNDS_1(num_threads)
+__global__ void unrolled_elementwise_kernel_for_multi_outputs(int N, func_t f, array_t data, inp_calc_t ic, out_calc_t oc) {
+  int remaining = N - block_work_size * blockIdx.x;
+  elementwise_kernel_helper(
+      f, memory::policies::multi_outputs_unroll<array_t, inp_calc_t, out_calc_t, num_outputs>(data, remaining, ic, oc));
 }
 
 // this function assume trivial 1d and no dynamic casting
@@ -215,6 +223,15 @@ static inline void launch_unrolled_kernel(int64_t N, const func_t& f, array_t da
   int64_t grid = (N + block_work_size - 1) / block_work_size;
   auto stream = at::cuda::getCurrentCUDAStream();
   unrolled_elementwise_kernel<func_t, array_t><<<grid, num_threads, 0, stream>>>(N, f, data, ic, oc);
+  AT_CUDA_CHECK(cudaGetLastError());
+}
+
+template <int num_outputs, typename func_t, typename array_t, typename inp_calc_t, typename out_calc_t>
+static inline void launch_unrolled_kernel_for_multi_outputs(int64_t N, const func_t& f, array_t data, inp_calc_t ic, out_calc_t oc) {
+  TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
+  int64_t grid = (N + block_work_size - 1) / block_work_size;
+  auto stream = at::cuda::getCurrentCUDAStream();
+  unrolled_elementwise_kernel_for_multi_outputs<num_outputs, func_t, array_t><<<grid, num_threads, 0, stream>>>(N, f, data, ic, oc);
   AT_CUDA_CHECK(cudaGetLastError());
 }
 
@@ -296,56 +313,6 @@ void gpu_kernel_impl(TensorIterator& iter, const func_t& f) {
   }
 }
 
-namespace {
-
-template <int current>
-struct tuple_result_write_helper {
-  template <typename tuple_t>
-  static __device__ inline void apply(tuple_t src, tuple_t &dst) {
-    using T = std::tuple_element_t<current, tuple_t>;
-    auto src_value = reinterpret_cast<T>(std::get<current>(src));
-    std::get<current>(dst) = src_value;
-  }
-};
-
-} // namespace
-
-template <int num_outputs, typename func_t, typename policy_t>
-__device__ inline void multi_outputs_elementwise_kernel_helper(func_t f, policy_t policy) {
-  using traits = function_traits<func_t>;
-  using return_t = typename traits::result_type;
-  using args_t = typename traits::ArgsTuple;
-
-  int idx = blockIdx.x;
-
-  return_t results[thread_work_size];
-  args_t args[thread_work_size];
-
-  // load
-  policy.load(args, idx);
-
-  // compute
-  #pragma unroll
-  for (int i = 0; i < thread_work_size; i++) {
-    if (policy.check_inbounds(i)) {
-      memory::detail::static_unroll<tuple_result_write_helper, num_outputs>::with_args(c10::guts::apply(f, args[i]), results[i]);
-    }
-  }
-
-  // store
-  policy.store(results, idx);
-}
-
-template <int num_outputs, typename func_t, typename data_t, typename dtypes_t, typename offset_calc_t>
-C10_LAUNCH_BOUNDS_1(num_threads)
-__global__ void multi_outputs_elementwise_kernel(int N, func_t func, data_t data, at::detail::Array<int, 2> n_inp_out, dtypes_t dtypes, offset_calc_t offset_calc) {
-  int remaining = N - block_work_size * blockIdx.x;
-  multi_outputs_elementwise_kernel_helper<num_outputs>(
-      func,
-      memory::policies::multi_outputs_unroll<num_outputs, data_t, dtypes_t, offset_calc_t>(
-        data, n_inp_out, dtypes, remaining, offset_calc));
-}
-
 template <typename func_t>
 void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
   using traits = function_traits<func_t>;
@@ -375,10 +342,9 @@ void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
     dtypes[i] = iter.tensor(i).scalar_type();
   }
 
-  auto offset_calc = ::make_offset_calculator<num_inputs + num_outputs>(iter);
-  int64_t grid = (numel + block_work_size - 1) / block_work_size;
-  auto stream = at::cuda::getCurrentCUDAStream();
-  multi_outputs_elementwise_kernel<num_outputs><<<grid, num_threads, 0, stream>>>(numel, f, data, n_inp_out, dtypes, offset_calc);
+  auto input_calc = make_input_offset_calculator<num_inputs, num_outputs>(iter);
+  auto output_calc = ::make_offset_calculator<num_outputs>(iter);
+  modern::launch_unrolled_kernel_for_multi_outputs<num_outputs>(numel, f, data, input_calc, output_calc);
 }
 
 }} // namespace at::native

@@ -64,11 +64,11 @@ struct vectorized_load_helper {
 template<int arg_index>
 struct unroll_load_helper {
   template <typename args_t, typename policy_t, typename offset_t>
-  static __device__ void apply(policy_t &self, args_t *args, offset_t offset, int j) {
+  static __device__ void apply(policy_t &self, args_t *args, offset_t offset, int j, int num_outputs) {
     using arg_t = std::tuple_element_t<arg_index, args_t>;
     // `data` hold the data_ptr for tensors [output, input0, input1, ...], so we
     // need a +1 offset to get the input
-    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + 1]) + offset[arg_index];
+    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + num_outputs]) + offset[arg_index];
     std::get<arg_index>(args[j]) = *ptr;
   }
 };
@@ -78,29 +78,26 @@ template <typename T> struct is_tuple: std::false_type {};
 template <typename ...T> struct is_tuple<std::tuple<T...>>: std::true_type {};
 
 template <int current>
-struct multi_outputs_load_helper {
-  template <typename policy_t, typename args_t, typename offset_t>
-  static __device__ void apply(policy_t &self, args_t *args, offset_t offset, int j) {
-    using arg_t = std::tuple_element_t<current, args_t>;
-    // `data` hold the data_ptr for tensors [output, input0, input1, ...], so we
-    // need a +1 offset to get the input
-    auto ptr = reinterpret_cast<arg_t *>(self.data[current + self.n_inp_out[0]]) + offset[current + self.n_inp_out[0]];
-    std::get<current>(args[j]) = *ptr;
-  }
-};
-
-template <int current>
 struct multi_outputs_store_helper {
-  template<int ntensors, typename out_t, typename... Args>
+  template<int ntensors, int num_outputs, typename out_t, typename... Args>
   C10_HOST_DEVICE static void apply(
       at::detail::Array<char*, ntensors> data,
-      at::detail::Array<uint32_t, ntensors> offsets,
-      at::detail::Array<ScalarType, ntensors> dtypes,
+      at::detail::Array<uint32_t, num_outputs> offsets,
       out_t ret) {
     static_assert(is_tuple<out_t>::value);
     using T = std::tuple_element_t<current, out_t>;
     auto ptr = reinterpret_cast<T *>(data[current]) + offsets[current];
     std::get<current>(ret) = *ptr;
+  }
+};
+
+template <int current>
+struct tuple_result_write_helper {
+  template <typename tuple_t>
+  static __device__ inline void apply(tuple_t src, tuple_t &dst) {
+    using T = std::tuple_element_t<current, tuple_t>;
+    auto src_value = reinterpret_cast<T>(std::get<current>(src));
+    std::get<current>(dst) = src_value;
   }
 };
 
@@ -116,7 +113,7 @@ namespace policies {
 
 // Assumption:
 // all tensors are contiguous, that is: stride == sizeof(type) for all tensors
-template<typename data_t, typename inp_calc_t, typename out_calc_t>
+template<typename data_t, typename inp_calc_t, typename out_calc_t, int num_outputs = 1>
 struct unroll {
 
   data_t data;
@@ -142,7 +139,7 @@ struct unroll {
       }
       int linear_idx = thread_idx + block_work_size * idx;
       auto offset = input_offset_calculator.get(linear_idx);
-      detail::static_unroll<detail::unroll_load_helper, arity>::with_args(*this, args, offset, i);
+      detail::static_unroll<detail::unroll_load_helper, arity>::with_args(*this, args, offset, i, num_outputs);
       thread_idx += num_threads;
     }
   }
@@ -162,6 +159,11 @@ struct unroll {
       *to = from[i];
       thread_idx += num_threads;
     }
+  }
+
+  template <typename scalar_t>
+  __device__ inline void store_result(int i, scalar_t f_return, scalar_t *results) {
+    results[i] = f_return;
   }
 };
 
@@ -222,53 +224,37 @@ struct vectorized {
       to_[index] = v;
     }
   }
+
+  template <typename scalar_t>
+    __device__ inline void store_result(int i, scalar_t f_return, scalar_t *results) {
+      results[i] = f_return;
+    }
 };
 
-template <int num_outputs, typename data_t, typename dtypes_t, typename offset_calc_t>
-struct multi_outputs_unroll {
+template <typename data_t, typename inp_calc_t, typename out_calc_t, int num_outputs>
+struct multi_outputs_unroll : unroll<data_t, inp_calc_t, out_calc_t, num_outputs> {
 
-  data_t data;
-  at::detail::Array<int, 2> n_inp_out;
-  dtypes_t dtypes;
-  int remaining;
-  offset_calc_t offset_calc;
-
-  __device__ multi_outputs_unroll(data_t data, at::detail::Array<int, 2> n_inp_out, dtypes_t dtypes, int remaining, offset_calc_t offset_calc):
-    data(data), n_inp_out(n_inp_out), dtypes(dtypes), remaining(remaining), offset_calc(offset_calc) {}
-
-  __device__ inline bool check_inbounds(int thread_work_elem) {
-    return ((threadIdx.x + thread_work_elem * num_threads) < remaining);
-  }
-
-  template <typename args_t>
-  __device__ inline void load(args_t *args, int idx) {
-    constexpr int arity = std::tuple_size<args_t>::value;
-    int thread_idx = threadIdx.x;
-    #pragma unroll
-    for (int i = 0; i < thread_work_size; i++) {
-      if (thread_idx >= remaining) {
-        return;
-      }
-      int linear_idx = thread_idx + block_work_size * idx;
-      auto offsets = offset_calc.get(linear_idx);
-      memory::detail::static_unroll<detail::multi_outputs_load_helper, arity>::with_args(*this, args, offsets, i);
-      thread_idx += num_threads;
-    }
-  }
+  __device__ multi_outputs_unroll(data_t data, int remaining, inp_calc_t ic, out_calc_t oc):
+    unroll<data_t, inp_calc_t, out_calc_t, num_outputs>({data, remaining, ic, oc}) {}
 
   template <typename return_t>
   __device__ inline void store(return_t *from, int idx) {
     int thread_idx = threadIdx.x;
     #pragma unroll
     for (int i = 0; i < thread_work_size; i++) {
-      if (thread_idx >= remaining) {
+      if (thread_idx >= this->remaining) {
         return;
       }
       int linear_idx = thread_idx + block_work_size * idx;
-      auto offsets = offset_calc.get(linear_idx);
-      memory::detail::static_unroll<detail::multi_outputs_store_helper, num_outputs>::with_args(data, offsets, dtypes, from[i]);
+      auto offsets = this->output_offset_calculator.get(linear_idx);
+      memory::detail::static_unroll<detail::multi_outputs_store_helper, num_outputs>::with_args(this->data, offsets, from[i]);
       thread_idx += num_threads;
     }
+  }
+
+  template <typename return_t>
+  __device__ inline void store_result(int i, return_t f_return, return_t *results) {
+    memory::detail::static_unroll<detail::tuple_result_write_helper, num_outputs>::with_args(f_return, results[i]);
   }
 };
 
