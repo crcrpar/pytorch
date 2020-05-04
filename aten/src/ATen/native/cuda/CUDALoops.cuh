@@ -177,6 +177,22 @@ __global__ void vectorized_elementwise_kernel(int N, func_t f, array_t data) {
   }
 }
 
+template <int num_outputs, int vec_size, typename func_t, typename array_t>
+C10_LAUNCH_BOUNDS_1(num_threads)
+__global__ void vectorized_elementwise_kernel_for_multi_outputs(int N, func_t f, array_t data) {
+  using traits = function_traits<func_t>;
+  int remaining = N - block_work_size * blockIdx.x;
+
+  if (remaining < block_work_size) {
+    auto input_calc = TrivialOffsetCalculator<traits::arity>();
+    auto output_calc = TrivialOffsetCalculator<num_outputs>();
+    auto policy = memory::policies::multi_outputs_unroll<array_t, decltype(input_calc), decltype(output_calc), num_outputs>(data, remaining, input_calc, output_calc);
+    elementwise_kernel_helper(f, policy);
+  } else {
+    elementwise_kernel_helper(f, memory::policies::multi_outputs_vectorized<vec_size, array_t, num_outputs>(data));
+  }
+}
+
 template<typename func_t, typename array_t, typename inp_calc_t, typename out_calc_t>
 C10_LAUNCH_BOUNDS_1(num_threads)
 __global__ void unrolled_elementwise_kernel(int N, func_t f, array_t data, inp_calc_t ic, out_calc_t oc) {
@@ -215,6 +231,29 @@ static inline void launch_vectorized_kernel(int64_t N, const func_t& f, array_t 
     break;
   default:
     TORCH_INTERNAL_ASSERT(false, "Unexpected vectorization size");
+  }
+  AT_CUDA_CHECK(cudaGetLastError());
+}
+
+template <int num_outputs, typename func_t, typename array_t>
+static inline void launch_vectorized_kernel_for_multi_outputs(int64_t N, const func_t& f, array_t data) {
+  TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
+  using traits = function_traits<func_t>;
+  int64_t grid = (N + block_work_size - 1) / block_work_size;
+  auto stream = at::cuda::getCurrentCUDAStream();
+  int vec_size = memory::can_vectorize_up_to<func_t>(data);
+  auto input_calc = TrivialOffsetCalculator<traits::arity>();
+  auto output_calc = TrivialOffsetCalculator<num_outputs>();
+
+  switch (vec_size) {
+    case 4:
+      vectorized_elementwise_kernel_for_multi_outputs<num_outputs, 4, func_t, array_t><<<grid, num_threads, 0, stream>>>(N, f, data);
+      break;
+    case 2:
+      vectorized_elementwise_kernel_for_multi_outputs<num_outputs, 2, func_t, array_t><<<grid, num_threads, 0, stream>>>(N, f, data);
+      break;
+    default:
+      TORCH_INTERNAL_ASSERT(false, "Unexpected vectorization size");
   }
   AT_CUDA_CHECK(cudaGetLastError());
 }
@@ -334,6 +373,12 @@ void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
   }
 
   int64_t numel = iter.numel();
+
+  bool contiguous = iter.is_contiguous();
+
+  if (contiguous) {
+    modern::launch_vectorized_kernel_for_multi_outputs<num_outputs>(numel, f, data);
+  }
 
   auto input_calc = make_input_offset_calculator<num_inputs>(iter);
   auto output_calc = make_output_offset_calculator<num_outputs>(iter);

@@ -14,6 +14,12 @@
 
 namespace at { namespace native { namespace memory {
 
+// aligned vector generates vectorized load/store on CUDA
+template<typename scalar_t, int vec_size>
+struct alignas(sizeof(scalar_t) * vec_size) aligned_vector {
+  scalar_t val[vec_size];
+};
+
 namespace detail {
 
 // What does the `static_unroll` do?
@@ -47,17 +53,32 @@ struct static_unroll<func, end, end> {
   static inline C10_HOST_DEVICE void with_args(Args... args) {}
 };
 
+template<template<int i, int vec_size> typename func, int end, int current=0, int vec_size = 0>
+struct static_unroll_for_vectorized {
+  template<typename... Args>
+  static inline C10_HOST_DEVICE void with_args(Args&&... args) {
+    func<current, vec_size>::apply(std::forward<Args>(args)...);
+    static_unroll_for_vectorized<func, end, current+1, vec_size>::with_args(args...);
+  }
+};
+
+template<template<int i, int vec_size> typename func, int end, int vec_size>
+struct static_unroll_for_vectorized<func, end, end, vec_size> {
+  template<typename... Args>
+  static inline C10_HOST_DEVICE void with_args(Args... args) {}
+};
+
 // helper structs to be used with static_unroll to load arguments
 // one by one
 
 template<int arg_index>
 struct vectorized_load_helper {
   template <typename args_t, typename policy_t>
-  static __device__ void apply(policy_t &self, args_t *args, int idx) {
+  static __device__ void apply(policy_t &self, args_t *args, int idx, int num_outputs = 1) {
     using arg_t = std::tuple_element_t<arg_index, args_t>;
     // `data` hold the data_ptr for tensors [output, input0, input1, ...], so we
     // need a +1 offset to get the input
-    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + 1]) + block_work_size * idx;
+    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + num_outputs]) + block_work_size * idx;
     auto args_accessor = [&args] __device__ (int thread_unroll_idx) -> arg_t & { return std::get<arg_index>(args[thread_unroll_idx]); };
     self.load_single_arg(args_accessor, ptr);
   }
@@ -75,7 +96,6 @@ struct unroll_load_helper {
   }
 };
 
-// check the return type is `thrust::tuple`, not `std::tuple`.
 template <typename T> struct is_tuple: std::false_type {};
 
 template <typename ...T> struct is_tuple<thrust::tuple<T...>>: std::true_type {};
@@ -94,13 +114,32 @@ struct multi_outputs_store_helper {
   }
 };
 
-}  // namespace detail
-
-// aligned vector generates vectorized load/store on CUDA
-template<typename scalar_t, int vec_size>
-struct alignas(sizeof(scalar_t) * vec_size) aligned_vector {
-  scalar_t val[vec_size];
+template <int current, int vec_size>
+struct vectorized_multi_outputs_store_helper {
+  template <int ntensors, typename out_t>
+  static __device__ void apply(
+      int idx,
+      at::detail::Array<char*, ntensors> data,
+      out_t *ret) {
+    using scalar_t = typename thrust::tuple_element<current, out_t>::type;
+    using vec_t = aligned_vector<scalar_t, vec_size>;
+    constexpr int loop_size = thread_work_size / vec_size;
+    scalar_t *to = reinterpret_cast<scalar_t *>(data[current]) + block_work_size * idx;
+    vec_t *to_ = reinterpret_cast<vec_t *>(to);
+    int thread_idx = threadIdx.x;
+    #pragma unroll
+    for (int i = 0; i < loop_size; i++) {
+      int index = thread_idx + i * num_threads;
+      vec_t v;
+      for (int j = 0; j < vec_size; j++) {
+        v.val[j] = thrust::get<current>(ret[vec_size * i + j]);
+      }
+      to_[index] = v;
+    }
+  }
 };
+
+}  // namespace detail
 
 namespace policies {
 
@@ -160,7 +199,7 @@ struct unroll {
 // Note:
 // Functions in vectorized policy does not do boundary check. It assumes the whole block
 // has its job to do. So the reminders should be handled by the the caller manually.
-template <int vec_size, typename data_t>  // vec_size: number of scalars, can be 1, 2, or 4.
+template <int vec_size, typename data_t, int num_outputs = 1>  // vec_size: number of scalars, can be 1, 2, or 4.
 struct vectorized {
 
   static_assert(thread_work_size % vec_size == 0, "The workload per thread must be a multiple of vec_size");
@@ -193,7 +232,7 @@ struct vectorized {
   template<typename args_t>
   __device__ inline void load(args_t *args, int idx) {
     constexpr int arity = std::tuple_size<args_t>::value;
-    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, idx);
+    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, idx, num_outputs);
   }
 
   template<typename scalar_t>
@@ -236,6 +275,17 @@ struct multi_outputs_unroll : unroll<data_t, inp_calc_t, out_calc_t, num_outputs
   }
 };
 
+template <int vec_size, typename data_t, int num_outputs>
+struct multi_outputs_vectorized : vectorized<vec_size, data_t, num_outputs> {
+
+  __device__ multi_outputs_vectorized(data_t data) :
+    vectorized<vec_size, data_t, num_outputs>({data}) {}
+
+  template <typename result_t>
+  __device__ inline void store(result_t *from, int idx) {
+    memory::detail::static_unroll_for_vectorized<detail::vectorized_multi_outputs_store_helper, num_outputs, 0, vec_size>::with_args(idx, this->data, from);
+  }
+};
 }  // namespace policies
 
 // This is only used in host, but we will wrap this into some templates
