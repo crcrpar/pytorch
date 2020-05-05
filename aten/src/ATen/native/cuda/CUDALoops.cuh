@@ -204,4 +204,56 @@ void gpu_kernel_impl(TensorIterator& iter, const func_t& f) {
   }
 }
 
+template <typename func_t>
+void gpu_kernel_for_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
+  using traits = function_traits<func_t>;
+  using tuple_t = typename traits::result_type;
+  constexpr int num_outputs = thrust::tuple_size<tuple_t>::value;
+  constexpr int ntensors = traits::arity + num_outputs;
+
+  TORCH_INTERNAL_ASSERT(iter.can_use_32bit_indexing());
+  TORCH_INTERNAL_ASSERT(iter.ntensors() == ntensors);
+
+  at::detail::Array<char*, ntensors> data;
+  for (int i = 0; i < ntensors; i++) {
+    data[i] = (char *)iter.data_ptr(i);
+  }
+
+  int64_t numel = iter.numel();
+
+  bool contiguous = iter.is_contiguous();
+  bool dynamic_casting = needs_dynamic_casting<func_t>::check(iter);
+
+  if (!dynamic_casting) {
+    if (contiguous) {
+      launch_vectorized_multiple_outputs_kernel(numel, f, data);
+    } else {
+      auto input_offset_calculator = make_input_offset_calculator<traits::arity, num_outputs>(iter);
+      auto output_offset_calculator = make_output_offset_calculator<num_outputs>(iter);
+      auto loader = memory::LoadWithoutCast();
+      auto storer = memory::StoreWithoutCast();
+      launch_unrolled_multiple_outputs_kernel(numel, f, data, input_offset_calculator, output_offset_calculator, loader, storer);
+    }
+  } else {
+    at::detail::Array<ScalarType, traits::arity> in_dtypes;
+    at::detail::Array<ScalarType, num_outputs> out_dtypes;
+    for (int i = 0; i < traits::arity; i++) {
+      in_dtypes[i] = iter.tensor(i + num_outputs).scalar_type();
+    }
+    for (int i = 0; i < num_outputs; i++) {
+      out_dtypes[i] = iter.tensor(i).scalar_type();
+    }
+    auto loader = memory::LoadWithCast<traits::arity>(dtypes);
+    auto storer = memory::StoreWithCast(out_dtypes);
+    if (contiguous) {
+      auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
+      auto output_offset_calculator = TrivialOffsetCalculator<num_outputs>();
+      launch_unrolled_multiple_outputs_kernel(numel, f, data, input_offset_calculator, output_offset_calculator, loader, storer);
+    } else {
+      auto input_offset_calculator = make_input_offset_calculator<traits::arity, num_outputs>(iter);
+      auto output_offset_calculator = make_output_offset_calculator<num_outputs>(iter);
+      launch_unrolled_multiple_outputs_kernel(numel, f, data, input_offset_calculator, output_offset_calculator, loader, storer);
+    }
+  }
+}
 }} // namespace at::native

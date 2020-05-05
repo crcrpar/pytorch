@@ -127,4 +127,25 @@ void gpu_kernel_with_scalars(TensorIterator& iter, const func_t& f) {
   }
 }
 
+template <typename func_t>
+void gpu_kernel_for_multiple_outputs(TensorIterator& iter, const func_t& f) {
+  ASSERT_HOST_DEVICE_LAMBDA(func_t);
+
+  for (int arg = 0; arg < iter.ntensors(); arg++) {
+    TORCH_INTERNAL_ASSERT(iter.device(arg).is_cuda());
+  }
+
+  if (iter.numel() == 0) {
+    return;
+  }
+
+  if (!iter.can_use_32bit_indexing()) {
+    for (auto& sub_iter : iter.with_32bit_indexing()) {
+      gpu_kernel_for_multiple_outputs(sub_iter, f);
+    }
+  }
+
+  gpu_kernel_for_multiple_outputs_impl(iter, f);
+}
+
 }} //namespace at::native

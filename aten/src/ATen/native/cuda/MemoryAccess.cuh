@@ -9,6 +9,8 @@
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/cuda/detail/OffsetCalculator.cuh>
 
+#include <thrust/tuple.h>
+
 // References:
 // https://devblogs.nvidia.com/cuda-pro-tip-increase-performance-with-vectorized-memory-access/
 
@@ -47,17 +49,32 @@ struct static_unroll<func, end, end> {
   static inline C10_HOST_DEVICE void with_args(Args... args) {}
 };
 
+template <template<int i, int vec_size> typename func, int end, int current=0, int vec_size=0>
+struct static_unroll_for_multiple_outputs {
+  template <typename... Args>
+  static inline C10_HOST_DEVICE void with_args(Args&&... args) {
+    func<current, vec_size>::apply(std::forward<Args>(args)...);
+    static_unroll_for_multiple_outputs<func, end, current+1, vec_size>::with_args(args...);
+  }
+};
+
+template <template<int i, int vec_size> typename func, int end, int vec_size>
+structs static_unroll<func, end, end, vec_size> {
+  template <typename... Args>
+  static inline C10_HOST_DEVICE void with_args(Args&&... args) {}
+};
+
 // helper structs to be used with static_unroll to load arguments
 // one by one
 
 template<int arg_index>
 struct vectorized_load_helper {
   template <typename args_t, typename policy_t>
-  static __device__ void apply(policy_t &self, args_t *args, int idx) {
+  static __device__ void apply(policy_t &self, args_t *args, int idx, int num_outputs) {
     using arg_t = std::tuple_element_t<arg_index, args_t>;
-    // `data` hold the data_ptr for tensors [output, input0, input1, ...], so we
-    // need a +1 offset to get the input
-    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + 1]) + block_work_size * idx;
+    // `data` hold the data_ptr for tensors [output0, output1, ..., output_num_outputs, input0, input1, ...], so we
+    // need a +num_outputs offset to get the input
+    auto ptr = reinterpret_cast<arg_t *>(self.data[arg_index + num_outputs]) + block_work_size * idx;
     auto args_accessor = [&args] __device__ (int thread_unroll_idx) -> arg_t & { return std::get<arg_index>(args[thread_unroll_idx]); };
     self.load_single_arg(args_accessor, ptr);
   }
@@ -66,13 +83,26 @@ struct vectorized_load_helper {
 template<int arg_index>
 struct unroll_load_helper {
   template <typename args_t, typename policy_t, typename offset_t, typename loader_t>
-  static __device__ void apply(policy_t &self, args_t *args, offset_t offset, loader_t loader, int j) {
+  static __device__ void apply(policy_t &self, args_t *args, offset_t offset, loader_t loader, int j, int num_outputs) {
     using arg_t = std::tuple_element_t<arg_index, args_t>;
-    // `data` hold the data_ptr for tensors [output, input0, input1, ...], so we
+    // `data` hold the data_ptr for tensors [output0, output1, ..., output_num_outputs, input0, input1, ...], so we
     // need a +1 offset to get the input
-    std::get<arg_index>(args[j]) = loader.template load<arg_t>(self.data[arg_index + 1], offset[arg_index], arg_index);
+    std::get<arg_index>(args[j]) = loader.template load<arg_t>(self.data[arg_index + num_outputs], offset[arg_index], arg_index);
   }
 };
+
+template <int current>
+struct multiple_outputs_store_helper {
+  template <int ntensors, int num_outputs, typename tuple_t>
+  static __device__ void apply(
+      at::detail::Array<char*, ntensors> data,
+      at::detail::Array<uint32_t, num_outputs> offsets,
+      tuple_t ret) {
+    using T = typename thrust::tuple_element<current, tuple_t>::type;
+    T *to = reinterpret_cast<T *>(data[current]) + offsets[current];
+    *to =  thrust::get<current>(ret);
+  }
+}
 
 }  // namespace detail
 
@@ -135,7 +165,7 @@ namespace policies {
 
 // Assumption:
 // all tensors are contiguous, that is: stride == sizeof(type) for all tensors
-template<typename data_t, typename inp_calc_t, typename out_calc_t, typename loader_t, typename storer_t>
+template<typename data_t, typename inp_calc_t, typename out_calc_t, typename loader_t, typename storer_t, int num_outputs = 1>
 struct unroll {
 
   data_t data;
@@ -163,7 +193,7 @@ struct unroll {
       }
       int linear_idx = thread_idx + block_work_size * idx;
       auto offset = input_offset_calculator.get(linear_idx);
-      detail::static_unroll<detail::unroll_load_helper, arity>::with_args(*this, args, offset, loader, i);
+      detail::static_unroll<detail::unroll_load_helper, arity>::with_args(*this, args, offset, loader, i, num_outputs);
       thread_idx += num_threads;
     }
   }
@@ -190,7 +220,7 @@ struct unroll {
 // Note:
 // Functions in vectorized policy does not do boundary check. It assumes the whole block
 // has its job to do. So the reminders should be handled by the the caller manually.
-template <int vec_size, typename data_t>  // vec_size: number of scalars, can be 1, 2, or 4.
+template <int vec_size, typename data_t, int num_outputs = 1>  // vec_size: number of scalars, can be 1, 2, or 4.
 struct vectorized {
 
   static_assert(thread_work_size % vec_size == 0, "The workload per thread must be a multiple of vec_size");
@@ -223,7 +253,7 @@ struct vectorized {
   template<typename args_t>
   __device__ inline void load(args_t *args, int idx) {
     constexpr int arity = std::tuple_size<args_t>::value;
-    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, idx);
+    detail::static_unroll<detail::vectorized_load_helper, arity>::with_args(*this, args, idx, num_outputs);
   }
 
   template<typename scalar_t>
@@ -242,6 +272,36 @@ struct vectorized {
       to_[index] = v;
     }
   }
+};
+
+template <typename data_t, typename inp_calc_t, typename out_calc_t, typename loader_t, typename storer_t, int num_outputs>
+struct multiple_outputs_unroll : unroll<data_t, inp_calc_t, out_calc_t, loader_t, storer_t, num_outputs> {
+
+  __device__ multiple_outputs_unroll(data_t data, int remaining, inp_calc_t ic, out_calc_t oc, loader_t l, storer_t s):
+    unroll<data_t, inp_calc_t, out_calc_t, loader_t, storer_t, num_outputs>({data, remaining, ic, oc, l, s}) {}
+
+  template <typename tuple_t>
+  __device__ inline void store(tuple_t *from, int idx) {
+    int thread_idx = threadIdx.x;
+    #pragma unroll
+    for (int i = 0; i < thread_work_size; i++) {
+      if (thread_idx >= remaining) {
+        return;
+      }
+      int linear_idx = thread_idx + block_work_size * idx;
+      auto offsets = this->output_offset_calculator.get(linear_idx);
+      memory::detail::static_unroll<detail::multiple_outputs_store_helper, num_outputs>::with_args(this->data, offsets, from[i]);
+      thread_idx += num_threads;
+    }
+  }
+};
+
+template <int vec_size, typename data_t, int num_outputs>
+struct multiple_outputs_vectorized : vectorized<vec_size, data_t, num_outputs> {
+
+  __device__ multiple_outputs_vectorized(data_t data):
+    vectorized<vec_size, data_t, num_outputs>({data}) {}
+
 };
 
 }  // namespace policies
