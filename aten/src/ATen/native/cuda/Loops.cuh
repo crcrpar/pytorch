@@ -155,9 +155,8 @@ template <typename func_t>
 void gpu_kernel_multiple_outputs_impl(TensorIterator& iter, const func_t& f) {
   using traits = function_traits<func_t>;
   using output_t = typename traits::result_type;
-  TORCH_INTERNAL_ASSERT(memory::detail::is_tuple<output_t>::value);
+  static_assert(memory::detail::is_tuple<output_t>::value);
   constexpr int num_outputs = thrust::tuple_size<output_t>::value;
-  TORCH_INTERNAL_ASSERT(num_outputs > 1);
   constexpr int num_inputs = traits::arity;
   constexpr int ntensors = num_outputs + num_inputs;
 
