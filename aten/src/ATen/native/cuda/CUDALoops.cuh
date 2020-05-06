@@ -42,8 +42,6 @@
 #include <c10/util/TypeCast.h>
 #include <c10/util/C++17.h>
 
-#include <thrust/tuple.h>
-
 // Marks a lambda as executable on both the host and device. The __host__
 // attribute is important so that we can access static type information from
 // the host, even if the function is typically only executed on the device.
