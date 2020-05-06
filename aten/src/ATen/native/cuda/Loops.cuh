@@ -135,6 +135,11 @@ void gpu_kernel_with_scalars(TensorIterator& iter, const func_t& f) {
 
 namespace { // functions for `gpu_kernel_multiple_outputs`.
 
+// check the return type is `thrust::tuple`, not `std::tuple`.
+template <typename T> struct is_tuple: std::false_type {};
+
+template <typename ...T> struct is_tuple<thrust::tuple<T...>>: std::true_type {};
+
 template <int num_outputs, typename func_t, typename array_t, typename inp_calc_t, typename out_calc_t>
 C10_LAUNCH_BOUNDS_1(num_threads)
 __global__ void unrolled_elementwise_kernel_for_multi_outputs(int N, func_t f, array_t data, inp_calc_t ic, out_calc_t oc) {
