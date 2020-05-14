@@ -403,6 +403,15 @@ TORCH_LIBRARY_IMPL(aten, Autocast, m) {
   KERNEL(ADD_NS(baddbmm), "baddbmm", Tensor (const Tensor &, const Tensor &, const Tensor &, Scalar, Scalar), fp16)
   KERNEL(ADD_NS(bmm), "bmm", Tensor (const Tensor &, const Tensor &), fp16)
   KERNEL_UNBOXED_ONLY(ADD_NS(chain_matmul), "chain_matmul", Tensor (TensorList), fp16)
+  m.impl_UNBOXED("lstm_cell",
+      &WrapFunction<CastPolicy::fp16, std::tuple<Tensor, Tensor> (const Tensor &, TensorList, const Tensor &, const Tensor &, const Tensor &, const Tensor &), std::tuple<Tensor, Tensor> (const Tensor &, TensorList, const Tensor &, const Tensor &, const Tensor &, const Tensor &), &ADD_NS(lstm_cell)>::type::call);
+  KERNEL_UNBOXED_ONLY(ADD_NS(gru_cell), "gru_cell", Tensor (const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &), fp16)
+  KERNEL_UNBOXED_ONLY(ADD_NS(rnn_tanh_cell), "rnn_tanh_cell", Tensor (const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &), fp16)
+  KERNEL_UNBOXED_ONLY(ADD_NS(rnn_relu_cell), "rnn_relu_cell", Tensor (const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &), fp16)
+  m.impl_UNBOXED("_thnn_fused_lstm_cell",
+      &WrapFunction<CastPolicy::fp16, std::tuple<Tensor, Tensor, Tensor> (const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &), std::tuple<Tensor, Tensor, Tensor> (const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &), &ADD_NS(_thnn_fused_lstm_cell)>::type::call);
+  m.impl_UNBOXED("_thnn_fused_gru_cell",
+      &WrapFunction<CastPolicy::fp16, std::tuple<Tensor, Tensor> (const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &), std::tuple<Tensor, Tensor> (const Tensor &, const Tensor &, const Tensor &, const Tensor &, const Tensor &), &ADD_NS(_thnn_fused_gru_cell)>::type::call);
   // fp32
   KERNEL(ADD_NS(acos), "acos", Tensor (const Tensor &), fp32)
   KERNEL(ADD_NS(asin), "asin", Tensor (const Tensor &), fp32)
