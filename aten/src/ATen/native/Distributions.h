@@ -162,11 +162,11 @@ C10_DEVICE scalar_t binomial_inversion(scalar_t count, scalar_t prob, BaseSample
   accscalar_t geom_sum = 0;
   scalar_t num_geom = 0;
 
-  accscalar_t logprob = compat_log1p(-prob);
+  accscalar_t log1p_negprob = compat_log1p(-prob);
 
-  while (1) {
+  while (true) {
     U = standard_uniform.sample();
-    accscalar_t geom = compat_ceil(compat_log(U) / logprob);
+    accscalar_t geom = compat_ceil(compat_log(U) / log1p_negprob);
     geom_sum += geom;
     if (geom_sum > count) {
       break;
@@ -249,12 +249,9 @@ C10_DEVICE scalar_t sample_binomial(scalar_t count, scalar_t prob, BaseSampler<a
       // btrs
       return count - btrs<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
     } else {
-      // FIXME(crcrpar): This case fails.
+      // FIXME(crcrpar): This case sometimes fails.
       // count - binomial inversion
-      scalar_t case_to_fix_result = count - binomial_inversion<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
-      if (case_to_fix_result < 0.0) {
-        return 1;
-      }
+      return count - binomial_inversion<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
     }
   } else {
     // prob is nan?
