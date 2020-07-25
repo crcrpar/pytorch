@@ -171,7 +171,7 @@ C10_DEVICE scalar_t binomial_inversion(scalar_t count, scalar_t prob, BaseSample
     if (geom_sum > count) {
       break;
     }
-    num_geom = num_geom + 1;
+    num_geom += 1;
   }
   return num_geom;
 }
@@ -201,15 +201,15 @@ C10_DEVICE scalar_t btrs(scalar_t count, scalar_t prob, BaseSampler<accscalar_t,
     us = 0.5 - compat_abs(U);
     k = static_cast<scalar_t>(compat_floor((2 * a / us + b) * U + c));
 
-    // Reject non-sensical answers.
-    if (k < 0 || k > count) {
-      continue;
-    }
     // Region for which the box is tight, and we can return our calculated value.
     // This should happen 0.86 * v_r times. In the limit as n * p is large,
     // the acceptance rate converges to ~79% (and in the lower regime it is ~24%).
     if (us >= 0.07 && V <= v_r) {
       return k;
+    }
+    // Reject non-sensical answers.
+    if (k < 0 || k > count) {
+      continue;
     }
 
     // This deviates from Hormann's BTRS algorithm, as there is a log missing.
@@ -249,8 +249,12 @@ C10_DEVICE scalar_t sample_binomial(scalar_t count, scalar_t prob, BaseSampler<a
       // btrs
       return count - btrs<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
     } else {
+      // FIXME(crcrpar): This case fails.
       // count - binomial inversion
-      return count - binomial_inversion<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
+      scalar_t case_to_fix_result = count - binomial_inversion<scalar_t, accscalar_t, uniform_sampler_t>(count, qprob, standard_uniform);
+      if (case_to_fix_result < 0.0) {
+        return 1;
+      }
     }
   } else {
     // prob is nan?
