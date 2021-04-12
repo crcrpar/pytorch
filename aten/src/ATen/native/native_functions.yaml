@@ -8836,6 +8836,10 @@
 - func: linalg_multi_dot.out(Tensor[] tensors, *, Tensor(a!) out) -> Tensor(a!)
   python_module: linalg
 
+- func: stochastic_rounding(Tensor input, Generator? gen_=None) -> Tensor
+  dispatch:
+    CUDA: stochastic_rounding_cuda
+
 ## Functions that are only for testing
 # It is undocumented and should not be used outside of tests.
 - func: _test_serialization_subcmul(Tensor self, Tensor other, Scalar alpha=1) -> Tensor
