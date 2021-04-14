@@ -25,18 +25,13 @@ __device__ const float TWO_24 = 0.000000059604644775390625;
 
 
 template<typename out_type, typename rounded_type>
-__device__ __forceinline__ T maybe_upcast<>(__half x) {
-  return T(static_cast<float>(x));
+__device__ __forceinline__ out_type maybe_upcast(rounded_type x) {
+  return out_type(static_cast<float>(x));
 }
 
 template<typename out_type>
 __device__ __forceinline__ __half maybe_upcast<out_type, __half>(__half x) {
   return T(__half2float(x));
-}
-
-template<>
-__device__ __forceinline__ __half maybe_upcast<float, __half>(__half x) {
-  return __half2float(x);
 }
 
 
@@ -56,14 +51,14 @@ __device__ __forceinline__ out_type get_delta_fp16(in_type x) {
 template<typename out_type, typename in_type>
 struct rounder {
   static_assert(std::is_same<out_type, __half>::value && std::is_same<in_type, float>::value, "rounder only supports out_type=__half and in_type=float");
-}
+};
 
 template <>
 struct rounder<__half, float> {
   __device__ __forceinline__ __half operator() (float x) {
     return __float2half_rz(x);
   }
-}
+};
 
 
 // Natalia Magic
@@ -86,7 +81,7 @@ struct round_stochastically<out_type, in_type, at::Half> {
     } else {
       val = x + random_value * delta;
     }
+    const __half rounded = rounder(val);
+    return maybe_upcast<out_type>(rounded);
   }
-  const __half rounded = rounder(val);
-  return maybe_upcast<out_type>(rounded);
-}
+};
