@@ -49,7 +49,8 @@ void foreach_binary_op_(TensorList tensors, const Scalar& scalar) {
 #define FOREACH_BINARY_OP_SCALAR(NAME, OP, DIVISION_OP)                                             \
 void foreach_tensor_##NAME##_scalar_kernel_cuda_(TensorList tensors, const Scalar& scalar) {               \
     check_foreach_api_restrictions(tensors);                                                        \
-    if (!can_use_fast_route(tensors, scalar, DIVISION_OP)) {                                        \
+    const bool has_integral = has_int_or_bool_tensor(tensors);                                      \
+    if (!can_use_fast_route(tensors, scalar, DIVISION_OP) || has_integral) {                        \
         return at::native::foreach_tensor_##NAME##_scalar_kernel_slow_(tensors, scalar);            \
     }                                                                                               \
                                                                                                     \
@@ -58,7 +59,8 @@ void foreach_tensor_##NAME##_scalar_kernel_cuda_(TensorList tensors, const Scala
                                                                                                     \
 std::vector<Tensor> foreach_tensor_##NAME##_scalar_kernel_cuda(TensorList tensors, const Scalar& scalar) { \
     check_foreach_api_restrictions(tensors);                                                        \
-    if (!can_use_fast_route(tensors, scalar, DIVISION_OP)) {                                        \
+    const bool has_integral = has_int_or_bool_tensor(tensors);                                      \
+    if (!can_use_fast_route(tensors, scalar, DIVISION_OP) || has_integral) {                        \
         return at::native::foreach_tensor_##NAME##_scalar_kernel_slow(tensors, scalar);             \
     }                                                                                               \
                                                                                                     \
