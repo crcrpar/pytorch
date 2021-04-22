@@ -493,9 +493,9 @@ class TestForeach(TestCase):
         # Corresponding tensors with different sizes
         tensors1 = [torch.zeros(10, 10, device=device) for _ in range(10)]
         tensors2 = [torch.ones(11, 11, device=device) for _ in range(10)]
-        with self.assertRaisesRegex(RuntimeError, "Corresponding tensors in lists must have the same size"):
+        with self.assertRaisesRegex(RuntimeError, "must match the size of tensor b"):
             method(tensors1, tensors2)
-        with self.assertRaisesRegex(RuntimeError, r", got \[10, 10\] and \[11, 11\]"):
+        with self.assertRaisesRegex(RuntimeError, "must match the size of tensor b"):
             inplace(tensors1, tensors2)
 
     @skipMeta
@@ -668,6 +668,28 @@ class TestForeach(TestCase):
         else:
             self.assertEqual(expected, tensors1)
 
+    @skipMeta
+    @ops(foreach_binary_op_db)
+    def test_broadcasting(self, device, dtype, op):
+        method, ref = op.get_op(), op.get_ref()
+        if dtype == torch.bool and method == torch._foreach_sub:
+            return
+        # Valid pairs: (a, b), (a, c)
+        a = [torch.ones(1, 2, 2, 4, 1, device=device, dtype=dtype) for _ in range(N_values[0])]
+        b = [torch.ones(4, 3, device=device, dtype=dtype) for _ in range(N_values[0])]
+        c = [torch.zeros(2, 1, 2, 1, 5, device=device, dtype=dtype) for _ in range(N_values[0])]
+
+        for lhs, rhs in ((a, b), (a, c)):
+            expected = [ref(x, y) for x, y in zip(lhs, rhs)]
+            actual = method(lhs, rhs)
+            self.assertEqual(expected, actual)
+
+        # Check error occurs as expected
+        lhs, rhs = b, c
+        with self.assertRaisesRegex(RuntimeError, "must match the size of tensor b"):
+            method(lhs, rhs)
+        with self.assertRaisesRegex(RuntimeError, "must match the size of tensor b"):
+            [ref(x, y) for x, y in zip(lhs, rhs)]
 
 instantiate_device_type_tests(TestForeach, globals())
 
