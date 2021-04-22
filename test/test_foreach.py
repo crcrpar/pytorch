@@ -743,9 +743,10 @@ class TestForeach(TestCase):
             # Corresponding tensors with different sizes
             tensors1 = [torch.zeros(10, 10, device=device) for _ in range(10)]
             tensors2 = [torch.ones(11, 11, device=device) for _ in range(10)]
-            with self.assertRaisesRegex(RuntimeError, "Corresponding tensors in lists must have the same size"):
+            pattern = r"The size of tensor a \(\d+\) must match the size of tensor b \(\d+\) at non-singleton dimension \d"
+            with self.assertRaisesRegex(RuntimeError, pattern):
                 bin_op(tensors1, tensors2)
-            with self.assertRaisesRegex(RuntimeError, r", got \[10, 10\] and \[11, 11\]"):
+            with self.assertRaisesRegex(RuntimeError, pattern):
                 bin_op_(tensors1, tensors2)
 
     @skipMeta
@@ -827,6 +828,34 @@ class TestForeach(TestCase):
         res = torch._foreach_add([tensor1], [tensor2])
         torch._foreach_add_([tensor1], [tensor2])
         self.assertEqual(res, [tensor1])
+
+    @skipMeta
+    @dtypes(*torch.testing.get_all_dtypes())
+    def test_broardcasting(self, device, dtype):
+        # Valid pairs: (a, b), (a, c)
+        a = [torch.ones(1, 2, 2, 4, 1, device=device, dtype=dtype) for _ in range(N_values[0])]
+        b = [torch.ones(4, 3, device=device, dtype=dtype) for _ in range(N_values[0])]
+        c = [torch.zeros(2, 1, 2, 1, 5, device=device, dtype=dtype) for _ in range(N_values[0])]
+
+        for lhs, rhs in ((a, b), (a, c)):
+            expected = [torch.add(x, y) for x, y in zip(lhs, rhs)]
+            actual = torch._foreach_add(lhs, rhs)
+            self.assertEqual(expected, actual)
+
+        # Test errors
+        lhs, rhs = b, c
+        foreach_e, native_e = False, False
+
+        try:
+            [torch.add(x, y) for x, y in zip(lhs, rhs)]
+        except RuntimeError:
+            native_e = True
+        try:
+            torch._foreach_add(lhs, rhs)
+        except RuntimeError:
+            foreach_e = True
+        self.assertTrue(native_e and foreach_e)
+
 
 instantiate_device_type_tests(TestForeach, globals())
 
