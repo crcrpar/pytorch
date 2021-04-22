@@ -43,7 +43,7 @@ void check_foreach_api_restrictions(TensorList tensors, ArrayRef<Scalar> scalars
   TORCH_CHECK(tensors.size() == scalars.size(), "Tensor list must have same number of elements as scalar list.");
 }
 
-void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, const bool check_dtype=false) {
+void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, const bool check_dtype=false, const bool check_sizes=false) {
   TORCH_CHECK(tensors1.size() > 0, "Tensor list must have at least one tensor.");
   TORCH_CHECK(tensors2.size() > 0, "Tensor list must have at least one tensor.");
   TORCH_CHECK(tensors1.size() == tensors2.size(), "Tensor lists must have the same number of tensors, got ", tensors1.size(), " and ", tensors2.size());
@@ -51,7 +51,9 @@ void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, co
   const auto expected_dtype = tensors1[0].dtype();
 
   for (const auto i : c10::irange(tensors1.size())) {
-    TORCH_CHECK(tensors1[i].sizes() == tensors2[i].sizes(), "Corresponding tensors in lists must have the same size, got ", tensors1[i].sizes(), " and ", tensors2[i].sizes());
+    if (check_sizes) {
+      TORCH_CHECK(tensors1[i].sizes() == tensors2[i].sizes(), "Corresponding tensors in lists must have the same size, got ", tensors1[i].sizes(), " and ", tensors2[i].sizes());
+    }
 
     if (check_dtype) {
       TORCH_CHECK(tensors1[i].dtype() == expected_dtype, "All tensors in the tensor list must have the same dtype");
@@ -60,7 +62,7 @@ void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, co
   }
 }
 
-void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, TensorList tensors3, const bool check_dtype=false) {
+void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, TensorList tensors3, const bool check_dtype=false, const bool check_sizes=false) {
   TORCH_CHECK(tensors1.size() > 0, "Tensor list must have at least one tensor.");
   TORCH_CHECK(tensors2.size() > 0, "Tensor list must have at least one tensor.");
   TORCH_CHECK(tensors3.size() > 0, "Tensor list must have at least one tensor.");
@@ -70,8 +72,10 @@ void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, Te
   const auto expected_dtype = tensors1[0].dtype();
 
   for (const auto i : c10::irange(tensors1.size())) {
-    TORCH_CHECK(tensors1[i].sizes() == tensors2[i].sizes(), "Corresponding tensors in lists must have the same size, got ", tensors1[i].sizes(), " and ", tensors2[i].sizes());
-    TORCH_CHECK(tensors1[i].sizes() == tensors3[i].sizes(), "Corresponding tensors in lists must have the same size, got ", tensors1[i].sizes(), " and ", tensors3[i].sizes());
+    if (check_sizes) {
+      TORCH_CHECK(tensors1[i].sizes() == tensors2[i].sizes(), "Corresponding tensors in lists must have the same size, got ", tensors1[i].sizes(), " and ", tensors2[i].sizes());
+      TORCH_CHECK(tensors1[i].sizes() == tensors3[i].sizes(), "Corresponding tensors in lists must have the same size, got ", tensors1[i].sizes(), " and ", tensors3[i].sizes());
+    }
 
     if (check_dtype) {
       TORCH_CHECK(tensors1[i].dtype() == expected_dtype, "All tensors in the tensor list must have the same dtype");
@@ -81,8 +85,8 @@ void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, Te
   }
 }
 
-void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, TensorList tensors3, ArrayRef<Scalar> scalars, const bool check_dtype=false) {
-  check_foreach_api_restrictions(tensors1, tensors2, tensors3, check_dtype);
+void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, TensorList tensors3, ArrayRef<Scalar> scalars, const bool check_dtype=false, const bool check_sizes=false) {
+  check_foreach_api_restrictions(tensors1, tensors2, tensors3, check_dtype, check_sizes);
   TORCH_CHECK(tensors1.size() == scalars.size(), "Tensor list must have same number of elements as scalar list, got ", tensors1.size(), " and ", scalars.size());
 }
 
@@ -127,11 +131,13 @@ bool check_fast_path_restrictions(
   bool does_op_promote_integer_inputs_to_float = false) {
     const auto expected_dtype = tensorLists[0][0].dtype();
     const auto expected_device = tensorLists[0][0].device();
+    const auto expected_size = tensorLists[0][0].sizes();
 
     auto is_tensor_okay = [&](const Tensor& tensor) {
       return tensor.dtype() == expected_dtype &&
              tensor.device() == expected_device &&
              tensor.layout() == at::kStrided &&
+             tensor.sizes() == expected_size &&
              tensor.is_non_overlapping_and_dense();
     };
 
