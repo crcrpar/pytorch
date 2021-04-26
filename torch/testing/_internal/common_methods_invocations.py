@@ -1794,8 +1794,8 @@ class ShapeFuncInfo(OpInfo):
                                             **kwargs)
         self.ref = ref
 
-def sample_inputs_foreach(self, device, dtype, N):
-    tensors = [make_tensor((N, N), device, dtype) for _ in range(N)]
+def sample_inputs_foreach(self, device, dtype, N, **kwargs):
+    tensors = [make_tensor((N, N), device, dtype, **kwargs) for _ in range(N)]
     return tensors
 
 
@@ -1845,6 +1845,12 @@ class ForeachFuncInfo(OpInfo):
         self.inplace_ref_name = None
         if not has_no_inplace:
             self.inplace_ref_name = name + "_"
+
+    def get_ref(self):
+        return self.ref
+
+    def get_inplace_ref_name(self):
+        return self.inplace_ref_name
 
 
 def sample_inputs_linalg_cholesky_inverse(op_info, device, dtype, requires_grad=False):
