@@ -203,7 +203,7 @@ class OpInfo(object):
         self.dtypes = set(dtypes)
         self.dtypesIfCPU = set(dtypesIfCPU) if dtypesIfCPU is not None else self.dtypes
         self.dtypesIfCUDA = set(dtypesIfCUDA) if dtypesIfCUDA is not None else self.dtypes
-        self.dtypesIfROCM = set(dtypesIfROCM) if dtypesIfROCM is not None else self.dtypes
+        self.dtypesIfROCM = set(dtypesIfROCM) if dtypesIfROCM is not None else self.dtypesIfCUDA
         self._default_test_dtypes = set(default_test_dtypes) if default_test_dtypes is not None else None
 
         # NOTE: if the op is unspecified it is assumed to be under the torch namespace
@@ -301,7 +301,7 @@ class OpInfo(object):
         if device_type == 'cpu':
             return self.dtypesIfCPU
         if device_type == 'cuda':
-            return self.dtypesIfCUDA
+            return self.dtypesIfROCM if TEST_WITH_ROCM else self.dtypesIfCUDA
         else:
             return self.dtypes
 
@@ -359,7 +359,7 @@ class UnaryUfuncInfo(OpInfo):
                  dtypes=floating_types(),
                  dtypesIfCPU=floating_and_complex_types_and(torch.bfloat16),
                  dtypesIfCUDA=floating_and_complex_types_and(torch.half),
-                 dtypesIfROCM=floating_and_complex_types_and(torch.half),
+                 dtypesIfROCM=None,
                  default_test_dtypes=(
                      torch.uint8, torch.long, torch.half, torch.bfloat16,
                      torch.float32, torch.cfloat),  # dtypes which tests check by default
