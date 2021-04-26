@@ -1811,30 +1811,40 @@ def get_foreach_method_names(name):
 
     return method, method_inplace, ref
 
-class ForeachUnaryFuncInfo(OpInfo):
-    """Early version of a specialized OpInfo for foreach unary functions"""
-    def __init__(self,
-                 name,
-                 dtypes=floating_and_complex_types(),
-                 dtypesIfCPU=all_types_and_complex(),
-                 dtypesIfCUDA=floating_and_complex_types_and(torch.half),
-                 dtypesIfROCM=floating_and_complex_types_and(torch.half),
-                 safe_casts_outputs=True,
-                 sample_inputs_func=sample_inputs_foreach,
-                 **kwargs):
-        super(ForeachUnaryFuncInfo, self).__init__("_foreach_" + name,
-                                                   dtypes=dtypes,
-                                                   dtypesIfCPU=dtypesIfCPU,
-                                                   dtypesIfCUDA=dtypesIfCUDA,
-                                                   dtypesIfROCM=dtypesIfROCM,
-                                                   safe_casts_outputs=safe_casts_outputs,
-                                                   sample_inputs_func=sample_inputs_func,
-                                                   **kwargs)
 
-        foreach_method, foreach_method_inplace, torch_ref_method = get_foreach_method_names(name)
-        self.method_variant = foreach_method
-        self.inplace_variant = foreach_method_inplace
-        self.ref = torch_ref_method
+class ForeachFuncInfo(OpInfo):
+    def __init__(
+        self,
+        name,
+        has_no_inplace=False,
+        supports_alpha_param=False,
+        dtypes=floating_and_complex_types(),
+        dtypesIfCPU=all_types_and_complex(),
+        dtypesIfCUDA=floating_and_complex_types_and(torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.half),
+        sample_inputs_func=sample_inputs_foreach,
+        **kwargs,
+    ):
+        super().__init__(
+            "_foreach_" + name,
+            dtypes=dtypes,
+            dtypesIfCPU=dtypesIfCPU,
+            dtypesIfCUDA=dtypesIfCUDA,
+            dtypesIfROCM=dtypesIfROCM,
+            sample_inputs_func=sample_inputs_func,
+            **kwargs,
+        )
+        self.supports_alpha_param = supports_alpha_param
+        # Update methods information. This processing is unique to `foreach` functions
+        method_variant, inplace_variant, ref = get_foreach_method_names(name)
+        assert self.op is method_variant
+        assert self.inplace_variant is None
+        assert self.operator_variant is None
+        self.inplace_variant = inplace_variant
+        self.ref = ref
+        self.inplace_ref_name = None
+        if not has_no_inplace:
+            self.inplace_ref_name = name + "_"
 
 
 def sample_inputs_linalg_cholesky_inverse(op_info, device, dtype, requires_grad=False):
