@@ -87,6 +87,110 @@ class TestForeach(TestCase):
                     with self.assertRaisesRegex(RuntimeError, msg):
                         op(tensors, tensors1, tensors2, [2 for _ in range(N)])
 
+    def _binary_op_test_impl(
+        self,
+        op,
+        inputs1,
+        inputs2,
+        alpha=None,
+    ):
+        kwargs = {} if alpha is None else {'alpha': alpha}
+        method = op.get_op()
+        if inputs1[0].dtype in (torch.float16, torch.bfloat16) and self.device_type == 'cuda' and TEST_WITH_ROCM:
+            rtol, atol = self.dtype_precisions[dtype]
+        else:
+            rtol, atol = None, None
+        assert_kwargs = {'atol': atol, 'rtol': rtol}
+
+        try:
+            if not isinstance(inputs2, list):
+                _inputs2 = [inputs2 for _ in range(len(inputs1))]
+            else:
+                _inputs2 = inputs2
+            expected = [op.get_ref()(i1, i2, **kwargs) for i1, i2 in zip(inputs1, _inputs2)]
+        except RuntimeError:
+            with self.assertRaises(RuntimeError):
+                method(inputs1, inputs2, **kwargs)
+        else:
+            actual = method(inputs1, inputs2, **kwargs)
+            self.assertEqual(expected, actual, **assert_kwargs)
+
+        if op.get_inplace_ref_name() is not None:
+            copied_inputs1 = [t.clone().detach() for t in inputs1]
+            inplace = op.get_inplace()
+            try:
+                if not isinstance(inputs2, list):
+                    _inputs2 = [inputs2 for _ in range(len(inputs1))]
+                else:
+                    _inputs2 = inputs2
+                [getattr(i1, op.get_inplace_ref_name())(i2, **kwargs) for i1, i2 in zip(inputs1, _inputs2)]
+            except RuntimeError:
+                with self.assertRaises(RuntimeError):
+                    inplace(copied_inputs1, inputs2, **kwargs)
+            else:
+                inplace(copied_inputs1, inputs2, **kwargs)
+                self.assertEqual(inputs1, copied_inputs1, **assert_kwargs)
+
+    @skipMeta
+    @ops(foreach_binary_op_db)
+    def test_bin_ops_tensorlists(self, device, dtype, op):
+
+        def _bin_op_tensorlists_test(N, noncontiguous, dtype2=None):
+            tensors1 = op.sample_inputs(device, dtype, N, noncontiguous=noncontiguous)
+            tensors2 = op.sample_inputs(device, dtype, N, noncontiguous=noncontiguous)
+            if dtype2 is not None:
+                tensors2 = [t.to(dtype2) for t in tensors2]
+            self._binary_op_test_impl(op, tensors1, tensors2, alpha=None)
+            if op.supports_alpha_param:
+                self._binary_op_test_impl(op, tensors1, tensors2, alpha=2.0)
+
+        for N in N_values:
+            _bin_op_tensorlists_test(N, False)
+            _bin_op_tensorlists_test(N, True)
+
+        dtypes = op.dtypes
+        if device == torch.device('cpu'):
+            dtypes = op.dtypesIfCPU
+        if device == torch.device('cuda'):
+            dtypes == op.dtypesIfCUDA
+        for dtype2 in dtypes:
+            if dtype not in torch.testing.get_all_complex_dtypes() and dtype2 != dtype:
+                _bin_op_tensorlists_test(N, False, dtype2=dtype2)
+                _bin_op_tensorlists_test(N, True, dtype2=dtype2)
+
+    @skipMeta
+    @ops(foreach_binary_op_db)
+    def test_bin_ops_scalarlist(self, device, dtype, op):
+
+        def _binary_op_test_impl(scalars, N, noncontiguous):
+            if not (self.device_type == 'cuda' and dtype in torch.testing.get_all_complex_dtypes() and isinstance(scalars, list)):
+                # NOTE(mkozuki): binary foreach ops with a list of tensors and a list of scalars 
+                # (`foreach_binary_op_scalarlist_cuda` and `foreach_binary_op_scalarlist_cuda_`)
+                # are dispatched by `AT_DISPATCH_ALL_TYPES_AND3`.
+                # The reason why complex dtype are excluded is that
+                # the arguments violate the size limitation of CUDA kernels (4kb)
+                # when dtype is TensorListScalarListMetadata's template arguments of
+                # `scalar_vals_t` and `n` are complex128 and 1.
+                tensors1 = op.sample_inputs(device, dtype, N, noncontiguous=noncontiguous)
+                self._binary_op_test_impl(op, tensors1, scalars, alpha=None)
+
+        scalars = [2.0, 2.0 + 1.0j, True, 1]
+        for N in N_values:
+            for scalar in scalars:
+                # test `foreach_binary_op_scalar_cuda` and `foreach_binary_op_scalar_cuda_`
+                _binary_op_test_impl(scalar, N, False)
+                _binary_op_test_impl(scalar, N, True)
+                cur_scalars = [scalar for _ in range(N)]
+                # test `foreach_binary_op_scalarlist_cuda` and `foreach_binary_op_scalarlist_cuda_`
+                _binary_op_test_impl(cur_scalars, N, False)
+                _binary_op_test_impl(cur_scalars, N, True)
+            # test `foreach_binary_op_scalarlist_cuda` and
+            # `foreach_binary_op_scalarlist_cuda_`
+            # with a list of scalars of different dtypes
+            mixed_scalars = scalars + [2.0] * (N - len(scalars))
+            _binary_op_test_impl(mixed_scalars, N, False)
+            _binary_op_test_impl(mixed_scalars, N, True)
+
     def _test_bin_op_list(self, device, dtype, foreach_op, foreach_op_, torch_op):
         for N in N_values:
             tensors1 = self._get_test_data(device, dtype, N)
