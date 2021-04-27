@@ -3044,16 +3044,18 @@ foreach_min_max_op_db: List[OpInfo] = [
     ForeachFuncInfo(
         'maximum',
         has_no_inplace=True,
-        dtypes=floating_types_and(torch.bool, torch.half, torch.bfloat16),
-        dtypesIfCPU=floating_types_and(torch.bool, torch.half, torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.bool, torch.half, torch.bfloat16)),
+        dtypes=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
+        dtypesIfCPU=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
+        dtypesIfCUDA=floating_types_and(torch.float16) + integral_types_and(),
+        dtypesIfROCM=floating_types_and(torch.float16) + integral_types_and()),
 
     ForeachFuncInfo(
         'minimum',
         has_no_inplace=True,
-        dtypes=floating_types_and(torch.bool, torch.half, torch.bfloat16),
-        dtypesIfCPU=floating_types_and(torch.bool, torch.half, torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.bool, torch.half, torch.bfloat16)),
+        dtypes=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
+        dtypesIfCPU=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
+        dtypesIfCUDA=floating_types_and(torch.float16) + integral_types_and(),
+        dtypesIfROCM=floating_types_and(torch.float16) + integral_types_and()),
 ]
 
 
