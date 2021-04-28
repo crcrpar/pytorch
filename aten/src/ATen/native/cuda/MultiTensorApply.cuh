@@ -27,6 +27,7 @@ __device__ __forceinline__ void load_store(T* dst, T* src, int dst_offset, int s
 static constexpr int depth_to_max_tensors[5] = {110, 64, 48, 36, 30};
 static constexpr int depth_to_max_blocks[5] = {320, 320, 320, 320, 320};
 static constexpr int depth_to_max_tensors_scalarlist[5] = {96, 64, 48, 36, 30};
+static constexpr int depth_to_max_tensors_scalarlist_complex128 = 80;
 
 template<int n> struct TensorListMetadata
 {
@@ -43,6 +44,16 @@ template<typename scalar_vals_t, int n> struct TensorListScalarListMetadata
   scalar_vals_t scalar_vals[depth_to_max_tensors_scalarlist[n-1]];
   unsigned char block_to_tensor[depth_to_max_blocks[n-1]];
   int block_to_chunk[depth_to_max_blocks[n-1]];
+};
+
+template<>
+struct TensorListScalarListMetadata<c10::complex<double>, 1>
+{
+  void *addresses[1][depth_to_max_tensors_scalarlist_complex128];
+  int numel_for_tensor[depth_to_max_tensors_scalarlist_complex128];
+  c10::complex<double> scalar_vals[depth_to_max_tensors_scalarlist_complex128];
+  unsigned char block_to_tensor[depth_to_max_tensors_scalarlist_complex128];
+  int block_to_chunk[depth_to_max_tensors_scalarlist_complex128];
 };
 
 template<typename T, typename U, typename... ArgTypes>
