@@ -1818,10 +1818,10 @@ class ForeachFuncInfo(OpInfo):
         name,
         has_no_inplace=False,
         supports_alpha_param=False,
-        dtypes=floating_and_complex_types(),
-        dtypesIfCPU=all_types_and_complex(),
-        dtypesIfCUDA=floating_and_complex_types_and(torch.half),
-        dtypesIfROCM=floating_and_complex_types_and(torch.half),
+        dtypes=all_types_and_complex_and(torch.bool, torch.half, torch.bfloat16),
+        dtypesIfCPU=all_types_and_complex_and(torch.bool, torch.bfloat16),
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half, torch.bfloat16),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half, torch.bfloat16),
         sample_inputs_func=sample_inputs_foreach,
         **kwargs,
     ):
@@ -2924,19 +2924,62 @@ def sample_inputs_scatter_add(op_info, device, dtype, requires_grad):
     return [SampleInput(tensor, args=args) for tensor, args in test_cases]
 
 foreach_unary_op_db: List[OpInfo] = [
-    ForeachFuncInfo('exp'),
-    ForeachFuncInfo('acos'),
-    ForeachFuncInfo('asin'),
-    ForeachFuncInfo('atan'),
-    ForeachFuncInfo('cos'),
-    ForeachFuncInfo('cosh'),
-    ForeachFuncInfo('log'),
-    ForeachFuncInfo('log10'),
-    ForeachFuncInfo('log2'),
-    ForeachFuncInfo('tan'),
-    ForeachFuncInfo('tanh'),
-    ForeachFuncInfo('sin'),
-    ForeachFuncInfo('sinh'),
+    ForeachFuncInfo(
+        'exp',
+    ),
+    ForeachFuncInfo(
+        'acos',
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+    ),
+    ForeachFuncInfo(
+        'asin',
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+    ),
+    ForeachFuncInfo(
+        'atan',
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+    ),
+    ForeachFuncInfo(
+        'cos',
+    ),
+    ForeachFuncInfo(
+        'cosh',
+        dtypesIfCPU=all_types_and_complex_and(torch.bool),
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+    ),
+    ForeachFuncInfo(
+        'log',
+    ),
+    ForeachFuncInfo(
+        'log10',
+    ),
+    ForeachFuncInfo(
+        'log2',
+    ),
+    ForeachFuncInfo(
+        'tan',
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+    ),
+    ForeachFuncInfo(
+        'tanh',
+    ),
+    ForeachFuncInfo(
+        'sin',
+        dtypesIfCPU=all_types_and_complex_and(torch.bool),
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+    ),
+    ForeachFuncInfo(
+        'sinh',
+        dtypesIfCPU=all_types_and_complex_and(torch.bool),
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+    ),
 
     ForeachFuncInfo(
         'neg',
@@ -2947,51 +2990,63 @@ foreach_unary_op_db: List[OpInfo] = [
 
     ForeachFuncInfo(
         'sqrt',
-        dtypes=floating_types(),
-        dtypesIfCPU=floating_and_complex_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_and_complex_types_and(torch.half)),
+    ),
 
     ForeachFuncInfo(
         'ceil',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half),
+        dtypesIfROCM=floating_types_and(torch.half),
+    ),
 
     ForeachFuncInfo(
         'erf',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        dtypesIfROCM=floating_types_and(torch.half, torch.bfloat16),
+    ),
 
     ForeachFuncInfo(
         'erfc',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half),
+        dtypesIfROCM=floating_types_and(torch.half),
+    ),
 
     ForeachFuncInfo(
         'expm1',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half),
+        dtypesIfROCM=floating_types_and(torch.half),
+    ),
 
     ForeachFuncInfo(
         'floor',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half),
+        dtypesIfROCM=floating_types_and(torch.half),
+    ),
 
     ForeachFuncInfo(
         'log1p',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        dtypesIfROCM=floating_types_and(torch.half, torch.bfloat16),
+    ),
 
     ForeachFuncInfo(
         'round',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half),
+        dtypesIfROCM=floating_types_and(torch.half),
+    ),
 
     ForeachFuncInfo(
         'frac',
@@ -3002,20 +3057,26 @@ foreach_unary_op_db: List[OpInfo] = [
     ForeachFuncInfo(
         'reciprocal',
         dtypes=floating_types(),
-        dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCPU=floating_and_complex_types_and(torch.half, torch.bfloat16),
+        dtypesIfCUDA=floating_and_complex_types_and(torch.half, torch.bfloat16),
+        dtypesIfROCM=floating_and_complex_types_and(torch.half, torch.bfloat16),
+    ),
 
     ForeachFuncInfo(
         'sigmoid',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        dtypesIfROCM=floating_types_and(torch.half, torch.bfloat16),
+    ),
 
     ForeachFuncInfo(
         'trunc',
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
-        dtypesIfCUDA=floating_types_and(torch.half)),
+        dtypesIfCUDA=floating_types_and(torch.half),
+        dtypesIfROCM=floating_types_and(torch.half),
+    ),
 
     ForeachFuncInfo(
         'abs',
@@ -3035,8 +3096,18 @@ foreach_binary_op_db: List[OpInfo] = [
 
 
 foreach_pointwise_op_db: List[OpInfo] = [
-    ForeachFuncInfo('addcmul', supports_alpha_param=True),
-    ForeachFuncInfo('addcdiv', supports_alpha_param=True),
+    ForeachFuncInfo(
+        'addcmul',
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+        supports_alpha_param=True,
+    ),
+    ForeachFuncInfo(
+        'addcdiv',
+        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+        supports_alpha_param=True,
+    ),
 ]
 
 
