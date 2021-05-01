@@ -3080,9 +3080,9 @@ foreach_unary_op_db: List[OpInfo] = [
 
     ForeachFuncInfo(
         'abs',
-        dtypes=all_types_and_complex_and(torch.bfloat16, torch.half, torch.bool),
+        dtypes=all_types_and_complex_and(torch.bfloat16, torch.half),
         dtypesIfCPU=all_types_and_complex_and(torch.bfloat16, torch.half),
-        dtypesIfCUDA=all_types_and_complex_and(torch.bfloat16, torch.half, torch.bool),
+        dtypesIfCUDA=all_types_and_complex_and(torch.bfloat16, torch.half),
         safe_casts_outputs=False)
 ]
 
@@ -3117,14 +3117,16 @@ foreach_binary_op_db: List[OpInfo] = [
 foreach_pointwise_op_db: List[OpInfo] = [
     ForeachFuncInfo(
         'addcmul',
-        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
-        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfCPU=floating_types_and(),
+        dtypesIfCUDA=all_types_and(torch.half),
+        dtypesIfROCM=all_types_and(torch.half),
         supports_alpha_param=True,
     ),
     ForeachFuncInfo(
         'addcdiv',
-        dtypesIfCUDA=floating_and_complex_types_and(torch.bool, torch.half),
-        dtypesIfROCM=floating_and_complex_types_and(torch.bool, torch.half),
+        dtypesIfCPU=floating_types_and(),
+        dtypesIfCUDA=floating_types_and(torch.half),
+        dtypesIfROCM=floating_types_and(torch.half),
         supports_alpha_param=True,
     ),
 ]
