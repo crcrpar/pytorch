@@ -3117,14 +3117,14 @@ foreach_binary_op_db: List[OpInfo] = [
 foreach_pointwise_op_db: List[OpInfo] = [
     ForeachFuncInfo(
         'addcmul',
-        dtypesIfCPU=floating_types_and(),
+        dtypesIfCPU=floating_types(),
         dtypesIfCUDA=all_types_and(torch.half),
         dtypesIfROCM=all_types_and(torch.half),
         supports_alpha_param=True,
     ),
     ForeachFuncInfo(
         'addcdiv',
-        dtypesIfCPU=floating_types_and(),
+        dtypesIfCPU=floating_types(),
         dtypesIfCUDA=floating_types_and(torch.half),
         dtypesIfROCM=floating_types_and(torch.half),
         supports_alpha_param=True,
@@ -3137,7 +3137,7 @@ foreach_min_max_op_db: List[OpInfo] = [
         'maximum',
         has_no_inplace=True,
         dtypes=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
-        dtypesIfCPU=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
+        dtypesIfCPU=all_types_and(torch.float16, torch.bfloat16, torch.bool),
         dtypesIfCUDA=all_types_and(torch.float16),
         dtypesIfROCM=all_types_and(torch.float16)),
 
@@ -3145,7 +3145,7 @@ foreach_min_max_op_db: List[OpInfo] = [
         'minimum',
         has_no_inplace=True,
         dtypes=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
-        dtypesIfCPU=floating_types_and(torch.float16, torch.bfloat16) + integral_types_and(torch.bool),
+        dtypesIfCPU=all_types_and(torch.float16, torch.bfloat16, torch.bool),
         dtypesIfCUDA=all_types_and(torch.float16),
         dtypesIfROCM=all_types_and(torch.float16)),
 ]
