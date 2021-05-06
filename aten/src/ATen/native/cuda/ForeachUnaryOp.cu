@@ -204,7 +204,7 @@ struct Reciprocal {
     __device__ T operator()(T t) const { return (one / t); }
 };
 
-OP_CUSTOM_FUNCTOR(floating_half_bfloat16, sigmoid, Sigmoid)
+OP_CUSTOM_FUNCTOR(floating_complex_half_bfloat16, sigmoid, Sigmoid)
 OP_CUSTOM_FUNCTOR(floating_half, round, Round)
 OP_CUSTOM_FUNCTOR(floating_half, frac, Trunc)
 OP_CUSTOM_FUNCTOR(floating_complex_half_bfloat16, reciprocal, Reciprocal)
