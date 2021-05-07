@@ -1,4 +1,5 @@
 #include <ATen/Dispatch.h>
+#include <ATen/AccumulateType.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/native/BinaryOps.h>
@@ -12,7 +13,8 @@ template<typename scalar_t>
 struct AddFunctor {
   AddFunctor(scalar_t a): alpha(a) {}
   __device__ __forceinline__ scalar_t operator() (const scalar_t a, const scalar_t b) const {
-    return a + alpha * b;
+    using op_t = acc_type<scalar_t, true>;
+    return static_cast<scalar_t>(static_cast<op_t>(a) + static_cast<op_t>(alpha) * static_cast<op_t>(b));
   }
   private:
     scalar_t alpha;

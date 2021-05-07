@@ -26,10 +26,8 @@ class TestForeach(TestCase):
         else:
             return dtype
 
-    def _test_binary_op(self, device, dtype, op, inputs1, inputs2, alpha=None, assert_kwargs=None, is_fastpath=False):
+    def _test_binary_op(self, device, dtype, op, inputs1, inputs2, alpha=None, is_fastpath=False):
         op_kwargs = {} if alpha is None else {'alpha': alpha}
-        if assert_kwargs is None:
-            assert_kwargs = {}
         method = op.get_op()
         ref = op.get_ref()
         inplace = op.get_inplace()
@@ -48,7 +46,7 @@ class TestForeach(TestCase):
         if is_fastpath and not is_bool and not (method == torch._foreach_sub and dtype == torch.bool):
             self.assertEqual(
                 [ref(i1, i2, **op_kwargs) for i1, i2 in zip(inputs1, native_inputs2)],
-                method(inputs1, inputs2, **op_kwargs), **assert_kwargs)
+                method(inputs1, inputs2, **op_kwargs))
         else:
             try:
                 actual = method(inputs1, inputs2, **op_kwargs)
@@ -57,7 +55,7 @@ class TestForeach(TestCase):
                     [ref(i1, i2, **op_kwargs) for i1, i2 in zip(inputs1, native_inputs2)]
             else:
                 expected = [ref(i1, i2, **op_kwargs) for i1, i2 in zip(inputs1, native_inputs2)]
-                self.assertEqual(expected, actual, **assert_kwargs)
+                self.assertEqual(expected, actual)
 
         if inplace is None:
             return
@@ -69,7 +67,7 @@ class TestForeach(TestCase):
                 [getattr(i1, inplace_ref_name)(i2, **op_kwargs) for i1, i2 in zip(inputs1, native_inputs2)]
         else:
             [getattr(i1, inplace_ref_name)(i2, **op_kwargs) for i1, i2 in zip(inputs1, native_inputs2)]
-            self.assertEqual(inputs1, copied_tensors, **assert_kwargs)
+            self.assertEqual(inputs1, copied_tensors)
 
     @skipMeta
     @ops(foreach_binary_op_db)
@@ -138,19 +136,10 @@ class TestForeach(TestCase):
     def test_binary_ops_tensorlists_with_alpha_fastpath(self, device, dtype, op):
         if not op.supports_alpha_param:
             self.skipTest("{} does not support alpha parameter".format(op.name))
-        # NOTE(mkozuki): the fastpath of tensorlists with alpha parameter seems wrong
-        # when dtype is either bfloat16 or float16.
-        # The error is 0.5/0.03125-ish for bfloat16/float16, respectively.
-        assert_kwargs = None
-        if dtype in (torch.bfloat16, torch.float16):
-            assert_kwargs = {
-                'rtol': self.dtype_precisions[dtype][0],
-                'atol': 0.05,
-            }
         for N in N_values:
             inputs1 = op.sample_inputs(device, dtype, N, noncontiguous=False)
             inputs2 = op.sample_inputs(device, dtype, N, noncontiguous=False)
-            self._test_binary_op(device, dtype, op, inputs1, inputs2, alpha=10, assert_kwargs=assert_kwargs, is_fastpath=True)
+            self._test_binary_op(device, dtype, op, inputs1, inputs2, alpha=10, is_fastpath=True)
 
     @skipMeta
     @dtypes(*torch.testing.get_all_dtypes())
