@@ -72,30 +72,66 @@ def adam(params: List[Tensor],
     for i, param in enumerate(params):
 
         grad = grads[i]
-        exp_avg = exp_avgs[i]
-        exp_avg_sq = exp_avg_sqs[i]
-        step = state_steps[i]
 
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
+        if not grad.is_sparse:
+            exp_avg = exp_avgs[i]
+            exp_avg_sq = exp_avg_sqs[i]
+            step = state_steps[i]
 
-        if weight_decay != 0:
-            grad = grad.add(param, alpha=weight_decay)
+            bias_correction1 = 1 - beta1 ** step
+            bias_correction2 = 1 - beta2 ** step
 
-        # Decay the first and second moment running average coefficient
-        exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
-        exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-        if amsgrad:
-            # Maintains the maximum of all 2nd moment running avg. till now
-            torch.maximum(max_exp_avg_sqs[i], exp_avg_sq, out=max_exp_avg_sqs[i])
-            # Use the max. for normalizing running avg. of gradient
-            denom = (max_exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)).add_(eps)
+            if weight_decay != 0:
+                grad = grad.add(param, alpha=weight_decay)
+
+            # Decay the first and second moment running average coefficient
+            exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+            exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+            if amsgrad:
+                # Maintains the maximum of all 2nd moment running avg. till now
+                torch.maximum(max_exp_avg_sqs[i], exp_avg_sq, out=max_exp_avg_sqs[i])
+                # Use the max. for normalizing running avg. of gradient
+                denom = (max_exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)).add_(eps)
+            else:
+                denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(eps)
+
+            step_size = lr / bias_correction1
+
+            param.addcdiv_(exp_avg, denom, value=-step_size)
         else:
-            denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(eps)
+            assert not max_exp_avg_sqs, "SparseAdam does not support `max_exp_avg_sqs"
+            assert not amsgrad, "SparseAdam does not support `amsgrad`"
+            assert weight_decay == 0, "SparseAdam does not support `weight_decay!=0`"
+            grad = grad.coalesce()
+            grad_indices = grad._indices()
+            grad_values = grad._values()
 
-        step_size = lr / bias_correction1
+            exp_avg = exp_avgs[i]
+            exp_avg_sq = exp_avg_sqs[i]
+            step = state_steps[i]
 
-        param.addcdiv_(exp_avg, denom, value=-step_size)
+            # Decay the first and second moment running average coefficient
+            #      old <- b * old + (1 - b) * new
+            # <==> old += (1 - b) * (new - old)
+            old_exp_avg_values = exp_avg.sparse_mask(grad)._values()
+            exp_avg_update_values = grad_values.sub(old_exp_avg_values).mul_(1 - beta1)
+            exp_avg.add_(_make_sparse(grad, grad_indices, exp_avg_update_values))
+
+            old_exp_avg_sq_values = exp_avg_sq.sparse_mask(grad)._values()
+            exp_avg_sq_update_values = grad_values.pow(2).sub_(old_exp_avg_sq_values).mul_(1 - beta2)
+            exp_avg_sq.add_(_make_sparse(grad, grad_indices, exp_avg_sq_update_values))
+
+            # Dense addition again is intended, avoiding another sparse_mask
+            numer = exp_avg_update_values.add_(old_exp_avg_values)
+            exp_avg_sq_update_values.add_(old_exp_avg_sq_values)
+            denom = exp_avg_sq_update_values.sqrt_().add_(eps)
+            del exp_avg_update_values, exp_avg_sq_update_values
+
+            bias_correction1 = 1 - beta1 ** step
+            bias_correction2 = 1 - beta2 ** step
+            step_size = lr * math.sqrt(bias_correction2) / bias_correction1
+
+            param.add_(_make_sparse(grad, grad_indices, -step_size * numer.div_(denom)))
 
 
 def adamw(params: List[Tensor],
