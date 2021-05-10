@@ -139,9 +139,9 @@ class TestForeach(TestCase):
     def test_binary_ops_tensorlists_with_alpha_fastpath(self, device, dtype, op):
         if not op.supports_alpha_param:
             self.skipTest("{} does not support alpha parameter".format(op.name))
-        # NOTE(mkozuki): the fastpath of tensorlists with alpha parameter seems wrong
-        # when dtype is either bfloat16 or float16.
-        # The error is 0.5/0.03125-ish for bfloat16/float16, respectively.
+        # NOTE(mkozuki): the fastpath of tensorlists with alpha parameter behaves differently
+        # from the native ones (torch.add & torch.sub) because
+        # the former does math in FP32 for BFloat16/Float16 I/O while the latter not.
         assert_kwargs = None
         if dtype in (torch.bfloat16, torch.float16):
             assert_kwargs = {
