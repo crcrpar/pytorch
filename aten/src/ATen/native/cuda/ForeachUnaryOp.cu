@@ -7,68 +7,6 @@
 
 namespace at { namespace native {
 
-template<template<class> class Op, typename scalar_t>
-struct TypePromoUnaryOpFunctorStub {
-  void operator()(std::vector<std::vector<at::Tensor>>& tensor_lists) {
-    TORCH_CHECK(false, "unary op provides type promotion support for bool and integer tyeps");
-  }
-};
-
-template<template<class> class Op>
-struct TypePromoUnaryOpFunctorStub<Op, bool> {
-  void operator()(std::vector<std::vector<at::Tensor>>& tensor_lists) {
-    multi_tensor_apply<2>(
-        tensor_lists,
-        UnaryOpFunctorTypePromo<bool, float>(),
-        Op<float>()
-    );
-  }
-};
-
-template<template<class> class Op>
-struct TypePromoUnaryOpFunctorStub<Op, uint8_t> {
-  void operator()(std::vector<std::vector<at::Tensor>>& tensor_lists) {
-    multi_tensor_apply<2>(
-        tensor_lists,
-        UnaryOpFunctorTypePromo<uint8_t, float>(),
-        Op<float>()
-    );
-  }
-};
-
-template<template<class> class Op>
-struct TypePromoUnaryOpFunctorStub<Op, int16_t> {
-  void operator()(std::vector<std::vector<at::Tensor>>& tensor_lists) {
-    multi_tensor_apply<2>(
-        tensor_lists,
-        UnaryOpFunctorTypePromo<int16_t, float>(),
-        Op<float>()
-    );
-  }
-};
-
-template<template<class> class Op>
-struct TypePromoUnaryOpFunctorStub<Op, int> {
-  void operator()(std::vector<std::vector<at::Tensor>>& tensor_lists) {
-    multi_tensor_apply<2>(
-        tensor_lists,
-        UnaryOpFunctorTypePromo<int, float>(),
-        Op<float>()
-    );
-  }
-};
-
-template<template<class> class Op>
-struct TypePromoUnaryOpFunctorStub<Op, int64_t> {
-  void operator()(std::vector<std::vector<at::Tensor>>& tensor_lists) {
-    multi_tensor_apply<2>(
-        tensor_lists,
-        UnaryOpFunctorTypePromo<int64_t, float>(),
-        Op<float>()
-    );
-  }
-};
-
 template <typename scalar_t, template<class> class Op>
 std::vector<Tensor> foreach_unary_op(TensorList tensors, const bool promote_integral, const bool include_bool) {
     std::vector<std::vector<at::Tensor>> tensor_lists;
@@ -98,7 +36,12 @@ std::vector<Tensor> foreach_unary_op(TensorList tensors, const bool promote_inte
                                             /* res_arg_index */ 1>(),
                             Op<opmath_t>());
     } else {
-        TypePromoUnaryOpFunctorStub<Op, scalar_t>(tensor_lists);
+        using out_t = typename get_promoted_t<scalar_t>::type;
+        multi_tensor_apply<2>(
+            tensor_lists,
+            UnaryOpFunctorTypePromo<scalar_t, out_t>(),
+            Op<out_t>()
+        );
     }
 
     return tensor_lists[1];

@@ -10,6 +10,14 @@ template<typename scalar_t> struct get_opmath_t { using opmath_t = scalar_t; };
 template<> struct get_opmath_t<at::Half> { using opmath_t = float; };
 template<> struct get_opmath_t<at::BFloat16> { using opmath_t = float; };
 
+template<typename scalar_t> struct get_promoted_t { using type = scalar_t; };
+template<> struct get_promoted_t<bool> { using type = float; };
+template<> struct get_promoted_t<int8_t> { using type = float; };
+template<> struct get_promoted_t<uint8_t> { using type = float; };
+template<> struct get_promoted_t<int16_t> { using type = float; };
+template<> struct get_promoted_t<int32_t> { using type = float; };
+template<> struct get_promoted_t<int64_t> { using type = float; };
+
 // Initializes args and checks if all args are aligned
 template<int depth, typename T>
 __device__ bool init_args(
@@ -60,6 +68,18 @@ __device__ void load_args(T r_args[][kILP], T** args, int i_start, int chunk_siz
             if(i < n && i < chunk_size) {
                 r_args[r_index][ii] = args[r_index][i];
             }
+        }
+    }
+}
+
+template<typename T, typename arg_t>
+__device__ void load_arg(T r_args[kILP], arg_t* args, int i_start, int chunk_size, int n) {
+#pragma unroll
+    for(int ii = 0; ii < kILP; ii++) {
+        int i = i_start + threadIdx.x + ii * blockDim.x;
+        r_args[ii] = 0;
+        if(i < n && i < chunk_size) {
+            r_args[ii] = static_cast<T>(args[i]);
         }
     }
 }
@@ -340,26 +360,19 @@ struct UnaryOpFunctorTypePromo {
 
     // TODO(mkozuki): Separate the below pointer setup into another function.
     const auto offset = chunk_idx * chunk_size;
-    in_t *input_ptr;
-    input_ptr = (in_t*)tl.addresses[0][tensor_loc];
+    in_t *input_ptr = (in_t*)tl.addresses[0][tensor_loc];
     input_ptr += chunk_idx * chunk_size;
-    out_t *output_ptr;
-    output_ptr = (out_t*)tl.addresses[1][tensor_loc];
+    out_t *output_ptr = (out_t*)tl.addresses[1][tensor_loc];
     output_ptr += chunk_idx * chunk_size;
     n -= chunk_idx * chunk_size;
 
     out_t results[kILP];
 
-    // TODO(mkozuki): Prepare a path for `all_aligned`
     for (int i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * kILP) {
+      load_arg(results, input_ptr, i_start, chunk_size, n);
 #pragma unroll
       for (int ii = 0; ii < kILP; ii++) {
-        int i = i_start + threadIdx.x + ii * blockDim.x;
-        results[ii] = input_ptr[i];
-      }
-#pragma unroll
-      for (int ii = 0; ii < kILP; ii++) {
-        results[ii] = op(static_cast<out_t>(input_ptr[ii]));
+        results[ii] = op(results[ii]);
       }
       store_args(output_ptr, results, i_start, chunk_size, n);
     }
