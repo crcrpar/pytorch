@@ -328,9 +328,6 @@ struct UnaryOpFunctor {
 
 template<typename in_t, typename out_t>
 struct UnaryOpFunctorTypePromo {
-  // With type promotion, `opmath_t` == `out_t`
-  // using opmath_t = typename get_opmath_t<in_t, true>::opmath_t;
-  // TORCH_INTERNAL_ASSERT(std::is_same<opmath_t, out_t>::value, "opmath_t and out_t are expected to be same");
   template<typename Op>
   __device__ __forceinline__ void operator() (
       const int chunk_size,
@@ -354,10 +351,6 @@ struct UnaryOpFunctorTypePromo {
     out_t results[kILP];
 
     // TODO(mkozuki): Prepare a path for `all_aligned`
-    // const bool all_aligned = (
-    //     ((uint64_t)input_ptr) % (kILP * sizeof(in_t)) == 0
-    //     && ((uint64_t)output_ptr) % (kILP * sizeof(out_t)) == 0
-    // );
     for (int i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * kILP) {
 #pragma unroll
       for (int ii = 0; ii < kILP; ii++) {
