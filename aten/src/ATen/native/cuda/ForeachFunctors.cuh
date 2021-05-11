@@ -326,6 +326,53 @@ struct UnaryOpFunctor {
         }
 };
 
+template<typename in_t, typename out_t>
+struct UnaryOpFunctorTypePromo {
+  // With type promotion, `opmath_t` == `out_t`
+  // using opmath_t = typename get_opmath_t<in_t, true>::opmath_t;
+  // TORCH_INTERNAL_ASSERT(std::is_same<opmath_t, out_t>::value, "opmath_t and out_t are expected to be same");
+  template<typename Op>
+  __device__ __forceinline__ void operator() (
+      const int chunk_size,
+      TensorListMetadata<2>& tl,
+      Op op
+  ){
+    const int tensor_loc = tl.block_to_tensor[blockIdx.x];
+    const int chunk_idx = tl.block_to_chunk[blockIdx.x];
+    int n = tl.numel_for_tensor[tensor_loc];
+
+    // TODO(mkozuki): Separate the below pointer setup into another function.
+    const auto offset = chunk_idx * chunk_size;
+    in_t *input_ptr;
+    input_ptr = (in_t*)tl.addresses[0][tensor_loc];
+    input_ptr += chunk_idx * chunk_size;
+    out_t *output_ptr;
+    output_ptr = (out_t*)tl.addresses[1][tensor_loc];
+    output_ptr += chunk_idx * chunk_size;
+    n -= chunk_idx * chunk_size;
+
+    out_t results[kILP];
+
+    // TODO(mkozuki): Prepare a path for `all_aligned`
+    // const bool all_aligned = (
+    //     ((uint64_t)input_ptr) % (kILP * sizeof(in_t)) == 0
+    //     && ((uint64_t)output_ptr) % (kILP * sizeof(out_t)) == 0
+    // );
+    for (int i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * kILP) {
+#pragma unroll
+      for (int ii = 0; ii < kILP; ii++) {
+        int i = i_start + threadIdx.x + ii * blockDim.x;
+        results[ii] = input_ptr[i];
+      }
+#pragma unroll
+      for (int ii = 0; ii < kILP; ii++) {
+        results[ii] = op(static_cast<out_t>(input_ptr[ii]));
+      }
+      store_args(output_ptr, results, i_start, chunk_size, n);
+    }
+  }
+};
+
 //
 // Pointwise Functors
 //
