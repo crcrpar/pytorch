@@ -1,27 +1,48 @@
+#include <type_traits>
 #include <ATen/Dispatch.h>
+#include <ATen/ScalarType.h>
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/cuda/ForeachFunctors.cuh>
 
+
 namespace at { namespace native {
 
-template <typename scalar_t, template<class> class Op> std::vector<Tensor> foreach_unary_op(TensorList tensors) {
+template <typename scalar_t, template<class> class Op>
+std::vector<Tensor> foreach_unary_op(TensorList tensors, const bool promote_integral, const bool include_bool) {
     std::vector<std::vector<at::Tensor>> tensor_lists;
+
+    const auto input_scalartype = tensors[0].scalar_type();
+    auto output_scalartype = input_scalartype;
+    bool requires_type_promo = false;
+    if (promote_integral && at::isIntegralType(input_scalartype, /* include_bool */include_bool)) {
+        output_scalartype = at::ScalarType::Float;
+        requires_type_promo = true;
+    }
     std::vector<at::Tensor> vec_res;
     vec_res.reserve(tensors.size());
     for (const auto& t: tensors) {
-        vec_res.emplace_back(at::native::empty_like(t));
+        vec_res.emplace_back(at::native::empty_like(t, output_scalartype));
     }
 
     tensor_lists.emplace_back(tensors.vec());
     tensor_lists.emplace_back(std::move(vec_res));
 
     using opmath_t = typename get_opmath_t<scalar_t>::opmath_t;
-    multi_tensor_apply<2>(tensor_lists,
-                          UnaryOpFunctor<scalar_t,
-                                         /* depth */ 2,
-                                         /* r_args_depth */ 1,
-                                         /* res_arg_index */ 1>(),
-                          Op<opmath_t>());
+    if (!requires_type_promo) {
+        multi_tensor_apply<2>(tensor_lists,
+                            UnaryOpFunctor<scalar_t,
+                                            /* depth */ 2,
+                                            /* r_args_depth */ 1,
+                                            /* res_arg_index */ 1>(),
+                            Op<opmath_t>());
+    } else {
+        using out_t = typename get_promoted_t<scalar_t>::type;
+        multi_tensor_apply<2>(
+            tensor_lists,
+            UnaryOpFunctorTypePromo<scalar_t, out_t>(),
+            Op<out_t>()
+        );
+    }
 
     return tensor_lists[1];
 }
@@ -41,7 +62,23 @@ template <typename scalar_t, template<class> class Op> void foreach_unary_op_(Te
 template <template<class> class Op>
 std::vector<Tensor> floating_complex_half(TensorList tensors) {
     return AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(ScalarType::Half,  tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
-        return foreach_unary_op<scalar_t, Op>(tensors);
+        return foreach_unary_op<scalar_t, Op>(tensors, false, false);
+    });
+}
+
+template<template<class> class Op>
+std::vector<Tensor> all_types_complex_half(TensorList tensors) {
+    return AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(ScalarType::Half, tensors[0].scalar_type(),
+"foreach_unary_op_cuda", [&]() {
+        return foreach_unary_op<scalar_t, Op>(tensors, true, true);
+    });
+}
+
+template<template<class> class Op>
+void all_types_complex_half_(TensorList tensors) {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(ScalarType::Half, tensors[0].scalar_type(),
+"foreach_unary_op_cuda_", [&]() {
+        foreach_unary_op_<scalar_t, Op>(tensors);
     });
 }
 
@@ -55,7 +92,7 @@ void floating_complex_half_(TensorList tensors) {
 template <template<class> class Op>
 std::vector<Tensor> all_types_complex_bfloat16_half_bool(TensorList tensors) {
     return AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(ScalarType::Half, ScalarType::BFloat16, ScalarType::Bool, tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
-        return foreach_unary_op<scalar_t, Op>(tensors);
+        return foreach_unary_op<scalar_t, Op>(tensors, false, false);
     });
 }
 
@@ -69,7 +106,7 @@ void all_types_complex_bfloat16_half_bool_(TensorList tensors) {
 template <template<class> class Op>
 std::vector<Tensor> floating_complex_half_bfloat16(TensorList tensors) {
     return AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
-        return foreach_unary_op<scalar_t, Op>(tensors);
+        return foreach_unary_op<scalar_t, Op>(tensors, false, false);
     });
 }
 
@@ -83,7 +120,7 @@ void floating_complex_half_bfloat16_(TensorList tensors) {
 template <template<class> class Op>
 std::vector<Tensor> all_types_half_complex_bfloat16(TensorList tensors) {
     return AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(ScalarType::Half, at::ScalarType::BFloat16, tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
-        return foreach_unary_op<scalar_t, Op>(tensors);
+        return foreach_unary_op<scalar_t, Op>(tensors, false, false);
     });
 }
 
@@ -97,7 +134,7 @@ void all_types_half_complex_bfloat16_(TensorList tensors) {
 template <template<class> class Op>
 std::vector<Tensor> floating_half(TensorList tensors) {
     return AT_DISPATCH_FLOATING_TYPES_AND(ScalarType::Half,  tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
-        return foreach_unary_op<scalar_t, Op>(tensors);
+        return foreach_unary_op<scalar_t, Op>(tensors, false, false);
     });
 }
 
@@ -111,7 +148,7 @@ void floating_half_(TensorList tensors) {
 template <template<class> class Op>
 std::vector<Tensor> floating_half_bfloat16(TensorList tensors) {
     return AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16,  tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
-        return foreach_unary_op<scalar_t, Op>(tensors);
+        return foreach_unary_op<scalar_t, Op>(tensors, false, false);
     });
 }
 
@@ -164,7 +201,7 @@ OP(floating_complex_half, asin, Asin);
 OP(floating_complex_half, atan, Atan);
 OP(floating_complex_half, cosh, Cosh);
 OP(floating_complex_half, tan, Tan);
-OP(floating_complex_half, sin, Sin);
+OP(all_types_complex_half, sin, Sin);
 OP(floating_complex_half, sinh, Sinh);
 
 OP(floating_complex_half_bfloat16, exp, Exp);
