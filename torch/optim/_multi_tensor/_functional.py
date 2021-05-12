@@ -29,12 +29,13 @@ def adagrad(
     """
 
     if weight_decay != 0:
-        torch._foreach_add(grads, params, alpha=weight_decay)
+        grads = torch._foreach_add(grads, params, alpha=weight_decay)
 
-    clr = lr / (1 + (step - 1) * lr_decay)
+    clrs = [-lr / (1 + (step - 1) * lr_decay) for step in state_steps]
     torch._foreach_addcmul_(state_sums, grads, grads, value=1)
-    stds = torch._foreach_add(torch._foreach_sqrt(state_sums), eps)
-    torch._foreach_addcdiv_(params, grads, stds, value=-clr)
+    stds = torch._foreach_sqrt(state_sums)
+    torch._foreach_add_(stds, eps)
+    torch._foreach_addcdiv_(params, grads, stds, scalars=clrs)
 
 
 def adam(
@@ -42,6 +43,7 @@ def adam(
         grads: List[Tensor],
         exp_avgs: List[Tensor],
         exp_avg_sqs: List[Tensor],
+        max_exp_avg_sqs: List[Tensor],
         state_steps: List[int],
         *,
         amsgrad: bool,
@@ -63,16 +65,22 @@ def adam(
         grads = torch._foreach_add(grads, params, alpha=weight_decay)
 
     # Decay the first and second moment running average coefficient
-    exp_avgs = torch._foreach_add(torch._foreach_mul(exp_avgs, beta1), grads, alpha=1 - beta1)
-    exp_avg_sqs = torch._foreach_addcmul(torch._foreach_mul(exp_avg_sqs, beta2), grads, grads, value=1 - beta2)
+    torch._foreach_mul_(exp_avgs, beta1)
+    torch._foreach_add_(exp_avgs, grads, alpha=1 - beta1)
+    torch._foreach_mul_(exp_avg_sqs, beta2)
+    torch._foreach_addcmul_(exp_avg_sqs, grads, grads, value=1 - beta2)
 
     if amsgrad:
+        # TODO(mkozuki): Implement `torch._foreach_maximum_`
         # Maintains the maximum of all 2nd moment running average till now
-        max_exp_avg_sqs = torch._foreach_maximum(max_exp_avg_sqs, exp_avg_sqs)
+        for m, e in zip(max_exp_avg_sqs, exp_avg_sqs):
+            torch.maximum(m, e, out=m)
         # Use the maximum for normalizing running average of gradient
-        denom = torch._foreach_add(torch._foreach_div(torch._foreach_sqrt(max_exp_avg_sqs), sqrt_bias_correction2s), eps)
+        denom = torch._foreach_div(torch._foreach_sqrt(max_exp_avg_sqs), sqrt_bias_correction2s)
+        torch._foreach_add_(denom, eps)
     else:
-        denom = torch._foreach_add(torch._foreach_div(torch._foreach_sqrt(exp_avg_sqs), sqrt_bias_correction2s), eps)
+        denom = torch._foreach_div(torch._foreach_sqrt(exp_avg_sqs), sqrt_bias_correction2s)
+        torch._foreach_add_(denom, eps)
 
     torch._foreach_addcdiv_(params, exp_avgs, denom, scalars=step_sizes)
 
@@ -104,15 +112,21 @@ def adamw(
     torch._foreach_mul_(params, 1 - lr * weight_decay)
 
     # Decay the first and second moment running average coefficient
-    exp_avgs = torch._foreach_add(torch._foreach_mul(exp_avgs, beta1), grads, alpha=1 - beta1)
-    exp_avg_sqs = torch._foreach_addcmul(torch._foreach_mul(exp_avg_sqs, beta2), grads, grads, value=1 - beta2)
+    torch._foreach_mul_(exp_avgs, beta1)
+    torch._foreach_add_(exp_avgs, grads, alpha=1 - beta1)
+
+    torch._foreach_mul_(exp_avg_sqs, beta2)
+    torch._foreach_addcmul_(exp_avg_sqs, grads, grads, value=1 - beta2)
     if amsgrad:
         # Maintains the maximum of all 2nd moment running average till now
-        max_exp_avg_sqs = torch._foreach_maximum(max_exp_avg_sqs, exp_avg_sqs)
+        for m, e in zip(max_exp_avg_sqs, exp_avg_sqs):
+            torch.maximum(m, e, out=m)
         # Use the maximum for normalizing running average of gradient
-        denom = torch._foreach_add(torch._foreach_div(torch._foreach_sqrt(max_exp_avg_sqs), sqrt_bias_correction2s), eps)
+        denom = torch._foreach_div(torch._foreach_sqrt(max_exp_avg_sqs), sqrt_bias_correction2s)
+        torch._foreach_add_(denom, eps)
     else:
-        denom = torch._foreach_add(torch._foreach_div(torch._foreach_sqrt(exp_avg_sqs), sqrt_bias_correction2s), eps)
+        denom = torch._foreach_div(torch._foreach_sqrt(exp_avg_sqs), sqrt_bias_correction2s)
+        torch._foreach_add_(denom, eps)
 
     torch._foreach_addcdiv_(params, exp_avgs, denom, scalars=step_sizes)
 
@@ -172,10 +186,14 @@ def adadelta(
 
     torch._foreach_mul_(square_avgs, rho)
     torch._foreach_addcmul_(square_avgs, grads, grads, value=1 - rho)
-    stds = torch._foreach_sqrt(torch._foreach_add(square_avgs, eps))
+
+    stds = torch._foreach_add(square_avgs, eps)
+    torch._foreach_sqrt_(stds)
     # In native pytorch: `delta = acc_delta.add(eps).sqrt_().div_(std).mul_(grad)`
-    deltas = torch._foreach_mul(
-        torch._foreach_div(torch._foreach_sqrt(torch._foreach_add(acc_delta, eps)), stds), grads)
+    deltas = torch._foreach_add(acc_deltas, eps)
+    torch._foreach_sqrt_(deltas)
+    torch._foreach_div_(deltas, stds)
+    torch._foreach_mul_(deltas, grads)
     torch._foreach_add_(params, deltas, alpha=-lr)
     # update acc_deltas
     torch._foreach_mul_(acc_deltas, rho)
@@ -205,26 +223,28 @@ def rmsprop(
         grads = torch._foreach_add(grads, params, alpha=weight_decay)
 
     torch._foreach_mul_(square_avgs, alpha)
-    torch._foreach_addcmul_(square_avgs, grads, grads, alpha=1 - alpha)
+    torch._foreach_addcmul_(square_avgs, grads, grads, value=1 - alpha)
 
     if centered:
         torch._foreach_mul_(grad_avgs, alpha)
         torch._foreach_add_(grad_avgs, grads, alpha=1 - alpha)
-        avgs = torch._foreach_add(
-            torch._foreach_sqrt(
-                torch._foreach_addcmul(square_avgs, grad_avgs, grad_avgs, value=-1)), eps)
+
+        avgs = torch._foreach_addcmul(square_avgs, grad_avgs, grad_avgs, value=-1)
+        torch._foreach_sqrt_(avgs)
+        torch._foreach_add_(avgs, eps)
     else:
-        avgs = torch._foreach_add(torch._foreach_sqrt(square_avgs), eps)
+        avgs = torch._foreach_sqrt(square_avgs)
+        torch._foreach_add_(avgs, eps)
 
     if momentum > 0:
-        torch._foreach_mul(momentum_buffer_list, momentum)
+        torch._foreach_mul_(momentum_buffer_list, momentum)
         torch._foreach_addcdiv_(momentum_buffer_list, grads, avgs)
         torch._foreach_add_(params, momentum_buffer_list, alpha=-lr)
     else:
         torch._foreach_addcdiv_(params, grads, avgs, value=-lr)
 
 
-# NOTE(mkozuki): Need more functions in foreach to make this better
+# NOTE(mkozuki): Need more functions in foreach to make this better: sign, clamp
 def rprop(
         params: List[Tensor],
         grads: List[Tensor],
@@ -241,7 +261,8 @@ def rprop(
     See :class:`~torch.optim.Rprop` for details.
     """
 
-    signs = torch._foreach_sign(torch._foreach_mul(grads, prevs))
+    signs = torch._foreach_mul(grads, prevs)
+    signs = [torch.sign(s) for s in signs]
     for sign in signs:
         sign[sign.gt(0)] = etaplus
         sign[sign.lt(0)] = etaminus
@@ -249,19 +270,21 @@ def rprop(
 
     # update step sizes with step size updates
     torch._foreach_mul_(step_sizes, signs)
-    torch._foreach_clmp_(step_sizes, step_size_min, step_size_max)
+    for step_size in step_sizes:
+        step_size.clamp_(step_size_min, step_size_max)
 
     # dfdx=0 if dir<0, dfdx, otherwise
-    for i, g in enumerate(grads):
+    cloned_grads = [g.clone(memory_format=torch.preserve_format) for g in grads]
+    for i, g in enumerate(cloned_grads):
         g = g.clone(memory_format=torch.preserve_format)
         g[signs[i].eq(etaminus)] = 0
-        grads[i] = g
+        cloned_grads[i] = g
 
     # update parameters
-    torch._foreach_addcmul_(params, torch._foreach_sign(grads), step_sizes, value=-1)
+    torch._foreach_addcmul_(params, [g.sign() for g in cloned_grads], step_sizes, value=-1)
 
     for i, prev in enumerate(prevs):
-        prev.copy_(grads[i])
+        prev.copy_(cloned_grads[i])
 
 
 def adamax(
@@ -291,10 +314,10 @@ def adamax(
 
     # Update the exponentially weighted infinity norm.
     norm_bufs = [
-        torch.cat([exp_infs.mul_(beta2).unsqueeze(0), grad.abs().add_(eps).unsqueeze_(0)], 0)
+        torch.cat([exp_inf.mul_(beta2).unsqueeze(0), grad.abs().add_(eps).unsqueeze_(0)], 0)
         for exp_inf, grad in zip(exp_infs, grads)
     ]
-    for nomr_buf, exp_inf in zip(norm_bufs, exp_infs):
+    for norm_buf, exp_inf in zip(norm_bufs, exp_infs):
         torch.amax(norm_buf, 0, keepdim=False, out=exp_inf)
 
     bias_corrections = [1 - beta1 ** step for step in state_steps]

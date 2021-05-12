@@ -1,4 +1,5 @@
 import torch
+from . import _functional as F
 from ..optimizer import Optimizer
 from collections import defaultdict
 
@@ -66,59 +67,53 @@ class RMSprop(Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            grads = []
             params_with_grad = []
-            states = []
-            alpha = group['alpha']
-            square_avg = []
+            grads = []
+            square_avgs = []
+            grad_avgs = []
+            momentum_buffer_list = []
 
             for p in group['params']:
-                if p.grad is not None:
-                    if p.grad.is_sparse:
-                        raise RuntimeError('RMSprop does not support sparse gradients')
+                if p.grad is None:
+                    continue
+                params_with_grad.append(p)
 
-                    grads.append(p.grad)
-                    params_with_grad.append(p)
+                if p.grad.is_sparse:
+                    raise RuntimeError('RMSprop does not support sparse gradients')
+                grads.append(p.grad)
 
-                    state = self.state[p]
-                    # State initialization
-                    if len(state) == 0:
-                        state['step'] = 0
-                        state['square_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
-                        if group['momentum'] > 0:
-                            state['momentum_buffer'] = torch.zeros_like(p, memory_format=torch.preserve_format)
-                        if group['centered']:
-                            state['grad_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                state = self.state[p]
 
-                        state['step'] += 1
+                # State initialization
+                if len(state) == 0:
+                    state['step'] = 0
+                    state['square_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    if group['momentum'] > 0:
+                        state['momentum_buffer'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    if group['centered']:
+                        state['grad_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
 
-                    states.append(state)
-                    square_avg.append(state['square_avg'])
+                square_avgs.append(state['square_avg'])
 
-            if group['weight_decay'] != 0:
-                torch._foreach_add_(grads, params_with_grad, alpha=group['weight_decay'])
+                if group['momentum'] > 0:
+                    momentum_buffer_list.append(state['momentum_buffer'])
+                if group['centered']:
+                    grad_avgs.append(state['grad_avg'])
 
-            torch._foreach_mul_(square_avg, alpha)
-            torch._foreach_addcmul_(square_avg, grads, grads, value=1 - alpha)
+                state['step'] += 1
 
-            if group['centered']:
-                grad_avgs = [s['grad_avg'] for s in states]
-                torch._foreach_mul_(grad_avgs, alpha)
-                torch._foreach_add_(grad_avgs, grads, alpha=1 - alpha)
-                avg = torch._foreach_addcmul(square_avg, grad_avgs, grad_avgs, value=-1)
-                torch._foreach_sqrt_(avg)
-                torch._foreach_add_(avg, group['eps'])
-            else:
-                avg = torch._foreach_sqrt(square_avg)
-                torch._foreach_add_(avg, group['eps'])
 
-            if group['momentum'] > 0:
-                buf = [s['momentum_buffer'] for s in states]
-                torch._foreach_mul_(buf, group['momentum'])
-                torch._foreach_addcdiv_(buf, grads, avg)
-                torch._foreach_add_(params_with_grad, buf, alpha=-group['lr'])
-            else:
-                torch._foreach_addcdiv_(params_with_grad, grads, avg, value=-group['lr'])
+            F.rmsprop(params_with_grad,
+                      grads,
+                      square_avgs,
+                      grad_avgs,
+                      momentum_buffer_list,
+                      lr=group['lr'],
+                      alpha=group['alpha'],
+                      eps=group['eps'],
+                      weight_decay=group['weight_decay'],
+                      momentum=group['momentum'],
+                      centered=group['centered'])
 
         return loss
 
