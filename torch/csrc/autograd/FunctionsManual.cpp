@@ -3576,6 +3576,343 @@ Tensor gather_with_keepdimed_indices(const Tensor& input, int64_t dim, const Ten
   return out_fw_grad;
 }
 
+// Foreach functions.
+// To be concise, some of backward functions are ported here from `derivatives.yaml`
+Tensor sqrt_backward(const Tensor& grad, const Tensor& result) {
+  return grad / (2 * result.conj());
+}
+
+std::vector<Tensor> foreach_tensor_sqrt_backward_slow(const variable_list& grads, const variable_list& result) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(grads[i] / (2 * result[i].conj()));
+  }
+  return ret;
+}
+
+Tensor exp_backward(const Tensor& grad, const Tensor& result) {
+  return grad * result.conj();
+}
+
+std::vector<Tensor> foreach_tensor_exp_backward_slow(const variable_list& grads, const variable_list& result) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(grads[i] * result[i].conj());
+  }
+  return ret;
+}
+
+Tensor abs_backward(const Tensor& grad, const Tensor& self) {
+  return grad * self.sgn();
+}
+
+std::vector<Tensor> foreach_tensor_abs_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(abs_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor acos_backward(const Tensor& grad, const Tensor& result, const Tensor& self) {
+  return grad * -((-self * self + 1).rsqrt()).conj();
+}
+
+std::vector<Tensor> foreach_tensor_acos_backward_slow(const variable_list& grads, const variable_list& result, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(acos_backward(grads[i], result[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor asin_backward(const Tensor& grad, const Tensor& self) {
+  return grad * (-self * self + 1).rsqrt().conj();
+}
+
+std::vector<Tensor> foreach_tensor_asin_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(asin_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor atan_backward(const Tensor& grad, const Tensor& self) {
+  return grad / (self * self + 1).conj();
+}
+
+std::vector<Tensor> foreach_tensor_atan_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(atan_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor ceil_backward(const Tensor& grad) {
+  return at::zeros_like(grad);
+}
+
+std::vector<Tensor> foreach_tensor_ceil_backward_slow(const variable_list& grads) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & t : grads) {
+    ret.emplace_back(ceil_backward(t));
+  }
+  return ret;
+}
+
+Tensor cos_backward(const Tensor& grad, const Tensor& self) {
+  return grad * - self.sin().conj();
+}
+
+std::vector<Tensor> foreach_tensor_cos_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(cos_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor cosh_backward(const Tensor& grad, const Tensor& self) {
+  return grad * self.sinh().conj();
+}
+
+std::vector<Tensor> foreach_tensor_cosh_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(cosh_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor erf_backward(const Tensor& grad, const Tensor& self) {
+  return 2.0 / sqrt(M_PI) * at::exp(-(self.pow(2))) * grad;
+}
+
+std::vector<Tensor> foreach_tensor_erf_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(erf_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor erfc_backward(const Tensor& grad, const Tensor& self) {
+  return -2.0 / sqrt(M_PI) * at::exp(-(self.pow(2))) * grad;
+}
+
+std::vector<Tensor> foreach_tensor_erfc_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    ret.emplace_back(erfc_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor expm1_backward(const Tensor& grad, const Tensor& result) {
+  return grad * (result + 1);
+}
+
+std::vector<Tensor> foreach_tensor_expm1_backward_slow(const variable_list& grads, const variable_list& result) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(expm1_backward(grads[i], result[i]));
+  }
+  return ret;
+}
+
+Tensor floor_backward(const Tensor& grad) {
+  return at::zeros_like(grad);
+}
+
+std::vector<Tensor> foreach_tensor_floor_backward_slow(const variable_list& grads) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & t : grads) {
+    ret.emplace_back(floor_backward(t));
+  }
+  return ret;
+}
+
+Tensor log_backward(const Tensor& grad, const Tensor& self) {
+  return grad.div(self.conj());
+}
+
+std::vector<Tensor> foreach_tensor_log_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(log_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor log10_backward(const Tensor& grad, const Tensor& self) {
+  return grad / (self.conj() * 2.3025850929940456);
+}
+
+std::vector<Tensor> foreach_tensor_log10_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(log10_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+std::vector<Tensor> foreach_tensor_log1p_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(log1p_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor log2_backward(const Tensor& grad, const Tensor& self) {
+  return grad / (self.conj() * 0.6931471805599453);
+}
+
+std::vector<Tensor> foreach_tensor_log2_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(log2_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor neg_backward(const Tensor& grad) { return grad.neg(); }
+
+std::vector<Tensor> foreach_tensor_neg_backward_slow(const variable_list& grads) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(neg_backward(grads[i]));
+  }
+  return ret;
+}
+
+Tensor tan_backward(const Tensor& grad, const Tensor& result) {
+  return grad * (1 + result.pow(2)).conj();
+}
+
+std::vector<Tensor> foreach_tensor_tan_backward_slow(const variable_list& grads, const variable_list& result) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(tan_backward(grads[i], result[i]));
+  }
+  return ret;
+}
+
+std::vector<Tensor> foreach_tensor_tanh_backward_slow(const variable_list& grads, const variable_list& result) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(tanh_backward(grads[i], result[i]));
+  }
+  return ret;
+}
+
+Tensor sin_backward(const Tensor& grad, const Tensor& self) {
+  return grad * self.cos().conj();
+}
+
+std::vector<Tensor> foreach_tensor_sin_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(sin_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor sinh_backward(const Tensor& grad, const Tensor& self) {
+  return grad * self.cosh().conj();
+}
+
+std::vector<Tensor> foreach_tensor_sinh_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(sinh_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+Tensor round_backward(const Tensor& grad) { return at::zeros_like(grad); }
+
+std::vector<Tensor> foreach_tensor_round_backward_slow(const variable_list& grads) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & t : grads) {
+    ret.emplace_back(round_backward(t));
+  }
+  return ret;
+}
+
+Tensor lgamma_backward(const Tensor& grad, const Tensor& self) {
+  return grad * at::digamma(self);
+}
+
+std::vector<Tensor> foreach_tensor_lgamma_backward_slow(const variable_list& grads, const variable_list& tensors) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(lgamma_backward(grads[i], tensors[i]));
+  }
+  return ret;
+}
+
+std::vector<Tensor> foreach_tensor_frac_backward_slow(const variable_list& grads) {
+  return grads;
+}
+
+std::vector<Tensor> foreach_tensor_trunc_backward_slow(const variable_list& grads) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & t : grads) {
+    ret.emplace_back(at::zeros_like(t));
+  }
+  return ret;
+}
+
+Tensor reciprocal_backward(const Tensor& grad, const Tensor& result) {
+  return -grad * (result * result).conj();
+}
+
+std::vector<Tensor> foreach_tensor_reciprocal_backward_slow(const variable_list& grads, const variable_list& result) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(reciprocal_backward(grads[i], result[i]));
+  }
+  return ret;
+}
+
+std::vector<Tensor> foreach_tensor_sigmoid_backward_slow(const variable_list& grads, const variable_list& result) {
+  std::vector<Tensor> ret;
+  ret.reserve(grads.size());
+  for (const auto & i : c10::irange(grads.size())) {
+    ret.emplace_back(sigmoid_backward(grads[i], result[i]));
+  }
+  return ret;
+}
+
 } // namespace details
 } // namespace generated
 } // namespace autograd
