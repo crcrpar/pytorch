@@ -99,8 +99,24 @@ std::vector<Tensor> foreach_tensor_##OP##_slow(TensorList tensors) {       \
                                                                            \
   return result;                                                           \
 }                                                                          \
+std::vector<Tensor> foreach_tensor_##OP##_slow(const std::vector<Tensor> & tensors) { \
+  check_foreach_api_restrictions(tensors);                                    \
+  std::vector<Tensor> result;                                                 \
+  result.reserve(tensors.size());                                             \
+  for (const auto & t : tensors) {                                            \
+    result.emplace_back(t.OP());                                              \
+  }                                                                           \
+  return result;                                                              \
+}                                                                             \
                                                                            \
 void foreach_tensor_##OP##_slow_(TensorList tensors) {                     \
+  check_foreach_api_restrictions(tensors);                                 \
+                                                                           \
+  for (auto& t : tensors) {                                                \
+    t.OP##_();                                                             \
+  }                                                                        \
+}                                                                          \
+void foreach_tensor_##OP##_slow_(std::vector<Tensor>& tensors) {           \
   check_foreach_api_restrictions(tensors);                                 \
                                                                            \
   for (auto& t : tensors) {                                                \

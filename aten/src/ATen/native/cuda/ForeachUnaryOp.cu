@@ -38,6 +38,17 @@ template <typename scalar_t, template<class> class Op> void foreach_unary_op_(Te
                           Op<opmath_t>());
 }
 
+template <typename scalar_t, template<class> class Op>
+void foreach_unary_op_(std::vector<std::vector<at::Tensor>>& tensors) {
+    using opmath_t = typename get_opmath_t<scalar_t>::opmath_t;
+    multi_tensor_apply<1>(tensors,
+                          UnaryOpFunctor<scalar_t,
+                                         /* depth */ 1,
+                                         /* r_args_depth */ 1,
+                                         /* res_arg_index */ 0>(),
+                          Op<opmath_t>());
+}
+
 template <template<class> class Op>
 std::vector<Tensor> floating_complex_half(TensorList tensors) {
     return AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(ScalarType::Half,  tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
@@ -48,6 +59,13 @@ std::vector<Tensor> floating_complex_half(TensorList tensors) {
 template <template<class> class Op>
 void floating_complex_half_(TensorList tensors) {
     AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(ScalarType::Half, tensors[0].scalar_type(), "foreach_unary_op_cuda_", [&]() {
+        foreach_unary_op_<scalar_t, Op>(tensors);
+    });
+}
+
+template <template<class> class Op>
+void floating_complex_half_(std::vector<std::vector<at::Tensor>>& tensors) {
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(ScalarType::Half, tensors[0][0].scalar_type(), "foreach_unary_op_cuda_", [&]() {
         foreach_unary_op_<scalar_t, Op>(tensors);
     });
 }
@@ -67,6 +85,13 @@ void all_types_complex_bfloat16_half_bool_(TensorList tensors) {
 }
 
 template <template<class> class Op>
+void all_types_complex_bfloat16_half_bool_(std::vector<std::vector<at::Tensor>>& tensors) {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(ScalarType::Half, ScalarType::BFloat16, ScalarType::Bool, tensors[0][0].scalar_type(), "foreach_unary_op_cuda", [&]() {
+        foreach_unary_op_<scalar_t, Op>(tensors);
+    });
+}
+
+template <template<class> class Op>
 std::vector<Tensor> floating_complex_half_bfloat16(TensorList tensors) {
     return AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
         return foreach_unary_op<scalar_t, Op>(tensors);
@@ -81,8 +106,15 @@ void floating_complex_half_bfloat16_(TensorList tensors) {
 }
 
 template <template<class> class Op>
+void floating_complex_half_bfloat16_(std::vector<std::vector<at::Tensor>>& tensors) {
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, tensors[0][0].scalar_type(), "foreach_unary_op_cuda_", [&]() {
+        foreach_unary_op_<scalar_t, Op>(tensors);
+    });
+}
+
+template <template<class> class Op>
 std::vector<Tensor> all_types_half_complex_bfloat16(TensorList tensors) {
-    return AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(ScalarType::Half, at::ScalarType::BFloat16, tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
+    return AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(ScalarType::Half, at::ScalarType::BFloat16, tensors[0][0].scalar_type(), "foreach_unary_op_cuda", [&]() {
         return foreach_unary_op<scalar_t, Op>(tensors);
     });
 }
@@ -90,6 +122,13 @@ std::vector<Tensor> all_types_half_complex_bfloat16(TensorList tensors) {
 template <template<class> class Op>
 void all_types_half_complex_bfloat16_(TensorList tensors) {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(ScalarType::Half, at::ScalarType::BFloat16, tensors[0].scalar_type(), "foreach_unary_op_cuda_", [&]() {
+        foreach_unary_op_<scalar_t, Op>(tensors);
+    });
+}
+
+template <template<class> class Op>
+void all_types_half_complex_bfloat16_(std::vector<std::vector<at::Tensor>>& tensors) {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(ScalarType::Half, at::ScalarType::BFloat16, tensors[0][0].scalar_type(), "foreach_unary_op_cuda_", [&]() {
         foreach_unary_op_<scalar_t, Op>(tensors);
     });
 }
@@ -109,6 +148,13 @@ void floating_half_(TensorList tensors) {
 }
 
 template <template<class> class Op>
+void floating_half_(std::vector<std::vector<at::Tensor>>& tensors) {
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(tensors[0][0].scalar_type(), "foreach_unary_op_cuda_", [&]() {
+        foreach_unary_op_<scalar_t, Op>(tensors);
+    });
+}
+
+template <template<class> class Op>
 std::vector<Tensor> floating_half_bfloat16(TensorList tensors) {
     return AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16,  tensors[0].scalar_type(), "foreach_unary_op_cuda", [&]() {
         return foreach_unary_op<scalar_t, Op>(tensors);
@@ -122,6 +168,13 @@ void floating_half_bfloat16_(TensorList tensors) {
     });
 }
 
+template <template<class> class Op>
+void floating_half_bfloat16_(std::vector<std::vector<at::Tensor>>& tensors) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(ScalarType::Half, ScalarType::BFloat16, tensors[0][0].scalar_type(), "foreach_unary_op_cuda_", [&]() {
+        foreach_unary_op_<scalar_t, Op>(tensors);
+    });
+}
+
 // makes the functor
 #define STD_FUNCTOR(op_name, functor_name)                           \
 template<typename T>                                                 \
@@ -129,6 +182,7 @@ struct functor_name {                                                \
     __device__ T operator()(T t) const { return std::op_name(t); }   \
 };                                                                   \
 
+// TODO(mkozuki): Enable tensor grouping for non-inplace ops
 // given a functor and a "dispatch function", creates the outplace and inplace operations
 #define OP_CUSTOM_FUNCTOR(function, op_name, functor_name)                \
 std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
@@ -138,13 +192,15 @@ std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
     }                                                                     \
     return function<functor_name>(tensors);                               \
 }                                                                         \
-void foreach_tensor_##op_name##_cuda_(TensorList tensors) {               \
-    check_foreach_api_restrictions(tensors);                              \
-    if (!can_use_fast_route(tensors)) {                                   \
-        return at::native::foreach_tensor_##op_name##_slow_(tensors);     \
-    }                                                                     \
-                                                                          \
-    function##_<functor_name>(tensors);                                   \
+void foreach_tensor_##op_name##_cuda_(TensorList tensors) {                        \
+    check_foreach_api_restrictions(tensors);                                       \
+    for (std::vector<std::vector<at::Tensor>> & tensor_vec : split_tensors_by_device_and_dtype(tensors)) {         \
+        if (!can_use_fast_route(tensor_vec)) {                                   \
+            at::native::foreach_tensor_##op_name##_slow_(tensor_vec[0]);           \
+        } else {                                                                   \
+            function##_<functor_name>(tensor_vec);                                 \
+        }                                                                          \
+    }                                                                              \
 }
 
 // creates a functor, outplace version, and inplace version.
