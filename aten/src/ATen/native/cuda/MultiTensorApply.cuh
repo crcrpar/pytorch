@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/DeviceGuard.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <ATen/native/cuda/Loops.cuh>
@@ -64,6 +65,7 @@ void multi_tensor_apply(
     ArgTypes... args) {
         TORCH_CHECK(tensor_lists.size() == depth, "Number of tensor lists has to match the depth.");
         size_t n_tensors = tensor_lists[0].size();
+        at::OptionalDeviceGuard guard(at::device_of(tensor_lists[0]));
         using scalar_vals_t = typename T::opmath_t;
         TensorListScalarListMetadata<scalar_vals_t, depth> tensorListMeta;
 
@@ -123,6 +125,7 @@ void multi_tensor_apply(
     ArgTypes... args) {
         TORCH_CHECK(tensor_lists.size() == depth, "Number of tensor lists has to match the depth.");
         size_t n_tensors = tensor_lists[0].size();
+        at::OptionalDeviceGuard guard(at::device_of(tensor_lists[0]));
         TensorListMetadata<depth> tensorListMeta;
 
         int loc_block_info = 0;
