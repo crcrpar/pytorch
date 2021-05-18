@@ -1,6 +1,8 @@
 #define _USE_MATH_DEFINES
 
 #include <math.h>
+#include <unordered_map>
+#include <string>
 
 #include <ATen/ATen.h>
 #include <ATen/DeviceGuard.h>
@@ -73,8 +75,36 @@ void _amp_non_finite_check_and_unscale_cuda_(Tensor& scaled_grad,
                  });
     });
 }
-} // anonymous namespace
 
+// Ref: https://github.com/pytorch/pytorch/blob/0362b753dba22c1ccab2f9f7ee9f6de2ffe45368/torch/cuda/amp/grad_scaler.py#L9
+struct _MultiDeviceReplicator {
+  at::Tensor master_tensor;
+  std::unordered_map<std::string, at::Tensor> _per_device_tensors;
+  _MultiDeviceReplicator() = delete;
+  _MultiDeviceReplicator(at::Tensor& tensor)
+    : master_tensor{master_tensor}, _per_device_tensors{{tensor.device().str(), tensor}} {}
+  _MultiDeviceReplicator(const at::Tensor& tensor)
+    : master_tensor{master_tensor}, _per_device_tensors{{tensor.device().str(), tensor}} {}
+  at::Tensor& get(const at::Device& device) {
+    const auto device_str = device.str();
+    if (_per_device_tensors.count(device_str) == 0) {
+      _per_device_tensors.emplace(
+        device_str,
+        master_tensor.to(device, master_tensor.scalar_type(), /* non_blocking */ true, /* copy */ true));
+    }
+    return _per_device_tensors[device_str];
+  }
+  at::ArrayRef<at::Tensor> array_ref() {
+    std::vector<at::Tensor> vec;
+    vec.reserve(_per_device_tensors.size());
+    for (auto & pair : _per_device_tensors) {
+      vec.emplace_back(pair.second);
+    }
+    return ArrayRef<at::Tensor>(vec);
+  }
+};
+
+} // anonymous namespace
 
 // Multiplies each tensor in scaled_grads by inv_scale in-place.
 // If any element of any tensor in scaled_grads is inf or NaN, sets found_inf to 1.0.
@@ -85,14 +115,20 @@ void _amp_non_finite_check_and_unscale_cuda_(Tensor& scaled_grad,
 // found_inf:  A single-element float tensor to which 1.0 will be written if any gradient contain infs/nans.
 //             Pre-zeroing found_inf, if appropriate, is the responsibility of the caller.
 // inv_scale:  The inverse of the scale factor by which scaled_grads are currently multiplied.
-void _amp_foreach_non_finite_check_and_unscale_cuda_(TensorList scaled_grads,
-                                                     Tensor& found_inf,
-                                                     const Tensor& inv_scale)
+// std::unordered_map<std::string, at::Tensor>
+void _amp_foreach_non_finite_check_and_unscale_cuda_(
+    TensorList scaled_grads,
+    TensorList found_infs,
+    TensorList inv_scales)
 {
-  if (scaled_grads.size() == 0) {
-    return;
-  }
+  TORCH_CHECK(found_infs.size() == 1, "found_infs must have only one tensor");
+  TORCH_CHECK(inv_scales.size() == 1, "inv_scales must have only one tensor");
 
+  auto found_inf = found_infs[0];
+  const auto inv_scale = inv_scales[0];
+  if (scaled_grads.size() == 0) {
+     return;
+  }
   TORCH_CHECK(inv_scale.is_cuda(), "inv_scale must be a CUDA tensor.");
   TORCH_CHECK(found_inf.is_cuda(), "found_inf must be a CUDA tensor.");
   TORCH_CHECK(inv_scale.numel() == 1, "inv_scale must be a 1-element tensor.");
@@ -100,77 +136,87 @@ void _amp_foreach_non_finite_check_and_unscale_cuda_(TensorList scaled_grads,
   TORCH_CHECK(inv_scale.scalar_type() == at::ScalarType::Float, "inv_scale must be a float tensor.");
   TORCH_CHECK(found_inf.scalar_type() == at::ScalarType::Float, "found_inf must be a float tensor.");
 
-  // Ensures client code (GradScaler) filtered scaled_grads by dtype.
-  check_foreach_api_restrictions(scaled_grads);
+  _MultiDeviceReplicator per_device_found_inf(found_inf);
+  _MultiDeviceReplicator per_device_inv_scale(inv_scale);
 
-  std::vector<std::vector<at::Tensor>> tensor_lists;
-
-  // is_non_overlapping_and_dense() is not available in Python.
-  // GradScaler can't filter for it. We need to filter here.
-  if (can_use_fast_route(scaled_grads)) {
-    // Hopefully common case.
-    // can_use_fast_route is true, which confirms:
-    //  - all scaled_grads are strided
-    //  - all scaled_grads are non overlapping and dense
-    //  - all scaled_grads are on the same device
-    TORCH_CHECK(scaled_grads[0].is_cuda(), "scaled_grads must be CUDA tensors.");
-    // Sets up MTA launch to use scaled_grads as-is.
-    tensor_lists.emplace_back(scaled_grads.vec());
-  } else {
-    // Hopefully uncommon case.
-    // can_use_fast_route is an all-or-nothing check.  In this path it was false,
-    // so any of the above confirmations could have gone wrong.
-    // We filter MTA-safe tensors into an MTA-able list.
-    // If a tensor is acceptable but not MTA-safe, we fall back to the TensorIterator kernel.
-    // If a tensor is unacceptable, we throw an error to blame GradScaler.
-    tensor_lists.resize(1);
-    tensor_lists[0].reserve(scaled_grads.size());
-    auto expected_device = scaled_grads[0].device();
-    for (const Tensor& t : scaled_grads) {
-      // Ensures GradScaler filtered scaled_grads by device.
-      TORCH_CHECK(t.is_cuda(), "one of scaled_grads was not a CUDA tensor.");
-      TORCH_CHECK(t.device() == expected_device, "scaled_grads must be on the same device.");
-      TORCH_CHECK(t.layout() == at::kStrided, "one of scaled_grads was not a strided tensor.");
-      if (!t.is_non_overlapping_and_dense()) {
-        // t is acceptable but not MTA-safe.  Falls back to single-tensor TensorIterator kernel.
-        _amp_non_finite_check_and_unscale_cuda_(const_cast<Tensor&>(t),
-                                                found_inf,
-                                                inv_scale);
-      } else {
-        tensor_lists[0].push_back(t);
+  for (auto & splited_tensors : split_tensors_by_device_and_dtype(scaled_grads)) {
+    // Ensures client code (GradScaler) filtered scaled_grads by dtype.
+    check_foreach_api_restrictions(splited_tensors[0]);
+    std::vector<std::vector<at::Tensor>> tensor_lists;
+    // is_non_overlapping_and_dense() is not available in Python.
+    // GradScaler can't filter for it. We need to filter here.
+    if (can_use_fast_route(splited_tensors)) {
+      // Hopefully common case.
+      // can_use_fast_route is true, which confirms:
+      //  - all scaled_grads are strided
+      //  - all scaled_grads are non overlapping and dense
+      //  - all scaled_grads are on the same device
+      TORCH_CHECK(splited_tensors[0][0].is_cuda(), "scaled_grads must be CUDA tensors.");
+      // Sets up MTA launch to use scaled_grads as-is.
+      tensor_lists.emplace_back(splited_tensors[0]);
+    } else {
+      // Hopefully uncommon case.
+      // can_use_fast_route is an all-or-nothing check.  In this path it was false,
+      // so any of the above confirmations could have gone wrong.
+      // We filter MTA-safe tensors into an MTA-able list.
+      // If a tensor is acceptable but not MTA-safe, we fall back to the TensorIterator kernel.
+      // If a tensor is unacceptable, we throw an error to blame GradScaler.
+      tensor_lists.resize(1);
+      tensor_lists[0].reserve(splited_tensors[0].size());
+      auto expected_device = splited_tensors[0][0].device();
+      for (const Tensor& t : splited_tensors[0]) {
+        // Ensures GradScaler filtered scaled_grads by device.
+        TORCH_CHECK(t.is_cuda(), "one of scaled_grads was not a CUDA tensor.");
+        TORCH_CHECK(t.device() == expected_device, "scaled_grads must be on the same device.");
+        TORCH_CHECK(t.layout() == at::kStrided, "one of scaled_grads was not a strided tensor.");
+        if (!t.is_non_overlapping_and_dense()) {
+          // t is acceptable but not MTA-safe.  Falls back to single-tensor TensorIterator kernel.
+          _amp_non_finite_check_and_unscale_cuda_(const_cast<Tensor&>(t),
+                                                  found_inf,
+                                                  inv_scale);
+        } else {
+          tensor_lists[0].push_back(t);
+        }
+      }
+      if (tensor_lists[0].size() == 0) {
+        found_infs = per_device_found_inf.array_ref();
+        continue;
       }
     }
-    if (tensor_lists[0].size() == 0) {
-      return;
-    }
+
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+      tensor_lists[0][0].scalar_type(),
+      "_amp_foreach_non_finite_check_and_unscale_cuda",
+      [&tensor_lists, &per_device_found_inf, &per_device_inv_scale] {
+        const auto cur_device = tensor_lists[0][0].device();
+
+        auto cur_found_inf = per_device_found_inf.get(cur_device);
+        auto* found_inf_ptr = cur_found_inf.data_ptr<float>();
+
+        auto cur_inv_scale = per_device_inv_scale.get(cur_device);
+        auto* inv_scale_ptr = cur_inv_scale.data_ptr<float>();
+
+        using opmath_t = get_opmath_t<scalar_t>::opmath_t;
+
+        // multi_tensor_apply guards onto tensor_lists[0][0], no need to guard explicitly.
+        multi_tensor_apply<1>(tensor_lists,
+                              UnaryOpFunctor<scalar_t,
+                                            /* depth */ 1,
+                                            /* r_args_depth */ 1,
+                                            /* res_arg_index */ 0>(),
+                              [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (opmath_t val) -> opmath_t {
+                                // There is a slight asymmetry here with the TensorIterator kernel above.
+                                // MTA Functors ensure val comes in as opmath_t rather than scalar_t.
+                                if (!isfinite_ensure_cuda_math(val)) {
+                                  *found_inf_ptr = 1.f;
+                                }
+                                // Every thread accesses inv_scale, but it will hit in cache.
+                                const auto inv_scale_val = *inv_scale_ptr;
+                                return static_cast<opmath_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
+                              });
+      });
   }
-
-  AT_DISPATCH_FLOATING_TYPES_AND_HALF(
-    tensor_lists[0][0].scalar_type(),
-    "_amp_foreach_non_finite_check_and_unscale_cuda",
-    [&tensor_lists, &found_inf, &inv_scale] {
-      auto* found_inf_ptr = found_inf.data_ptr<float>();
-      auto* inv_scale_ptr = inv_scale.data_ptr<float>();
-
-      using opmath_t = get_opmath_t<scalar_t>::opmath_t;
-
-      // multi_tensor_apply guards onto tensor_lists[0][0], no need to guard explicitly.
-      multi_tensor_apply<1>(tensor_lists,
-                            UnaryOpFunctor<scalar_t,
-                                           /* depth */ 1,
-                                           /* r_args_depth */ 1,
-                                           /* res_arg_index */ 0>(),
-                            [found_inf_ptr, inv_scale_ptr] GPU_LAMBDA (opmath_t val) -> opmath_t {
-                              // There is a slight asymmetry here with the TensorIterator kernel above.
-                              // MTA Functors ensure val comes in as opmath_t rather than scalar_t.
-                              if (!isfinite_ensure_cuda_math(val)) {
-                                *found_inf_ptr = 1.f;
-                              }
-                              // Every thread accesses inv_scale, but it will hit in cache.
-                              const auto inv_scale_val = *inv_scale_ptr;
-                              return static_cast<opmath_t>(inv_scale_val == 1.f ? val : val * inv_scale_val);
-                            });
-    });
+  // found_infs = per_device_found_inf.array_ref();
 }
 
 

@@ -188,8 +188,10 @@ class GradScaler(object):
         return apply_scale(outputs)
 
     def _unscale_grads_(self, optimizer, inv_scale, found_inf, allow_fp16):
-        per_device_inv_scale = _MultiDeviceReplicator(inv_scale)
-        per_device_found_inf = _MultiDeviceReplicator(found_inf)
+        # per_device_inv_scale = _MultiDeviceReplicator(inv_scale)
+        # per_device_found_inf = _MultiDeviceReplicator(found_inf)
+        inv_scales = [inv_scale]
+        found_infs = [found_inf]
 
         # To set up _amp_foreach_non_finite_check_and_unscale_, split grads by device and dtype.
         # There could be hundreds of grads, so we'd like to iterate through them just once.
@@ -198,6 +200,7 @@ class GradScaler(object):
         # https://stackoverflow.com/questions/5029934/defaultdict-of-defaultdict
         # Google says mypy struggles with defaultdicts type annotations.
         per_device_and_dtype_grads = defaultdict(lambda: defaultdict(list))  # type: ignore[var-annotated]
+        grads = []
         with torch.no_grad():
             for group in optimizer.param_groups:
                 for param in group["params"]:
@@ -217,15 +220,20 @@ class GradScaler(object):
                         to_unscale = param.grad
 
                     # TODO: is there a way to split by device and dtype without appending in the inner loop?
-                    per_device_and_dtype_grads[to_unscale.device][to_unscale.dtype].append(to_unscale)
+                    # per_device_and_dtype_grads[to_unscale.device][to_unscale.dtype].append(to_unscale)
+                    grads.append(to_unscale)
 
-            for device, per_dtype_grads in per_device_and_dtype_grads.items():
-                for grads in per_dtype_grads.values():
-                    torch._amp_foreach_non_finite_check_and_unscale_(grads,
-                                                                     per_device_found_inf.get(device),
-                                                                     per_device_inv_scale.get(device))
+            torch._amp_foreach_non_finite_check_and_unscale_(
+               grads, found_infs, inv_scales)
 
-        return per_device_found_inf._per_device_tensors
+            # for device, per_dtype_grads in per_device_and_dtype_grads.items():
+            #     for grads in per_dtype_grads.values():
+            #         torch._amp_foreach_non_finite_check_and_unscale_(grads,
+            #                                                          per_device_found_inf.get(device),
+            #                                                          per_device_inv_scale.get(device))
+
+        # return per_device_found_inf._per_device_tensors
+        return found_infs
 
     def unscale_(self, optimizer):
         """

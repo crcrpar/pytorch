@@ -7084,7 +7084,8 @@
     CPU: _cumprod_out_cpu
     CUDA: _cumprod_out_cuda
 
-- func: _amp_foreach_non_finite_check_and_unscale_(Tensor(a!)[] self, Tensor(b!) found_inf, Tensor inv_scale) -> ()
+- func: _amp_foreach_non_finite_check_and_unscale_(Tensor(a!)[] self, Tensor[] found_infs, Tensor[] inv_scales) -> ()
+  device_check: NoCheck  # Internally separates tensors with devices&dtypes
   variants: function
   dispatch:
     CUDA: _amp_foreach_non_finite_check_and_unscale_cuda_
