@@ -3,15 +3,68 @@
 
 #include <c10/util/irange.h>
 
+#include <vector>
+#include <unordered_map>
+#include <utility>
+#include <type_traits>
+
 namespace at {
 namespace native {
 namespace {
+
+struct DeviceHashFunctor {
+    size_t operator() (const at::Device & device) const {
+        return std::hash<std::string>()(device.str());
+    }
+};
+
+struct DtypeHashFunctor {
+    size_t operator() (const at::ScalarType & scalar_type) const {
+        return std::hash<int>()(static_cast<int>(scalar_type));
+    }
+};
+
+std::unordered_map<std::string, std::vector<at::Tensor>> _split_tensors_by_device_and_dtype(TensorList tensors) {
+  std::unordered_map<std::string, std::vector<at::Tensor>> hash;
+  for (auto & t : tensors) {
+    const std::string key = t.device().str() + "_" + std::to_string(static_cast<int>(t.scalar_type()));
+    if (hash.count(key) > 0) {
+      hash[key].emplace_back(t);
+    } else {
+      hash.emplace(key, std::vector<at::Tensor>{t});
+    }
+  }
+  return hash;
+}
+
+// TODO(mkozuki): Write versions for binary&pointwise functions
+std::vector<std::vector<std::vector<at::Tensor>>> split_tensors_by_device_and_dtype(TensorList tensors) {
+  const auto hash = _split_tensors_by_device_and_dtype(tensors);
+  std::vector<std::vector<std::vector<Tensor>>> grouped_tensors;
+  std::transform(
+    hash.begin(),
+    hash.end(),
+    std::back_inserter(grouped_tensors),
+    [] (const std::unordered_map<std::string, std::vector<at::Tensor>>::value_type &pair) {
+      return std::vector<std::vector<at::Tensor>>{pair.second};
+    });
+  return grouped_tensors;
+}
+
 // Check foreach API restrictions
 // - Tensor lists must be non-empty.
 // - All tensors in all lists must have the same dtype.
 // - All TensorLists and ScalarLists must have the same number of elements.
 // - Corresponding tensors must have the same size.
 void check_foreach_api_restrictions(TensorList tensors) {
+  TORCH_CHECK(tensors.size() > 0, "Tensor list must have at least one tensor.");
+  auto expected_dtype = tensors[0].dtype();
+  for (const auto& t : tensors) {
+    TORCH_CHECK(t.dtype() == expected_dtype, "All tensors in the tensor list must have the same dtype.");
+  }
+}
+
+void check_foreach_api_restrictions(const std::vector<at::Tensor>& tensors) {
   TORCH_CHECK(tensors.size() > 0, "Tensor list must have at least one tensor.");
   auto expected_dtype = tensors[0].dtype();
   for (const auto& t : tensors) {
@@ -79,10 +132,17 @@ bool will_promote_tensor(const Tensor& tensor, const Scalar& scalar, bool does_o
 
 // Please, make sure to call check_foreach_api_restrictions before calling this method.
 // There is a set of preconditions that have to be satisfied.
-bool check_fast_path_restrictions(
-  ArrayRef<TensorList> tensorLists,
-  ArrayRef<Scalar> scalarList = {},
-  bool does_op_promote_integer_inputs_to_float = false) {
+template<typename T1, typename T2>
+bool _check_fast_path_restrictions_impl(
+  T1 tensorLists,
+  T2 scalarList,
+  const bool does_op_promote_integer_inputs_to_float) {
+    // FIXME(mkozuki): ../aten/src/ATen/native/ForeachUtils.h:134:21: error: wrong number of template arguments (1, should be 2)  std::is_same< T1, ArrayRef<ArrayRef<at::Tensor>> >::value ||
+    // TORCH_INTERNAL_ASSERT(
+    //   std::is_same< T1, ArrayRef<ArrayRef<at::Tensor>> >::value ||
+    //   std::is_same< T1, std::vector<std::vector<at::Tensor>> >::value,
+    //   "`tensorLists` must be either `ArrayRef<TensorList>` or `std::vector<std::vector<at::Tensor>>`"
+    // );
     auto expected_device = tensorLists[0][0].device();
 
     auto is_tensor_okay = [&](const Tensor& tensor) {
@@ -137,6 +197,20 @@ bool check_fast_path_restrictions(
     return true;
 }
 
+bool check_fast_path_restrictions(
+  ArrayRef<TensorList> tensorLists,
+  ArrayRef<Scalar> scalarList = {},
+  bool does_op_promote_integer_inputs_to_float = false) {
+    return _check_fast_path_restrictions_impl(tensorLists, scalarList, does_op_promote_integer_inputs_to_float);
+}
+
+bool check_fast_path_restrictions(
+  const std::vector<std::vector<at::Tensor>>& tensorLists,
+  ArrayRef<Scalar> scalarList = {},
+  bool does_op_promote_integer_inputs_to_float = false) {
+    return _check_fast_path_restrictions_impl(tensorLists, scalarList, does_op_promote_integer_inputs_to_float);
+}
+
 bool can_use_fast_route(ArrayRef<TensorList> tensorLists,
                         ArrayRef<Scalar> scalarList = {},
                         bool does_op_promote_integer_inputs_to_float = false) {
@@ -144,6 +218,16 @@ bool can_use_fast_route(ArrayRef<TensorList> tensorLists,
   return false;
 #else
   return check_fast_path_restrictions(tensorLists, scalarList, does_op_promote_integer_inputs_to_float);
+#endif
+}
+
+bool can_use_fast_route(const std::vector<std::vector<at::Tensor>>& tensorVec,
+                        ArrayRef<Scalar> scalarList = {},
+                        bool does_op_promote_integer_inputs_to_float = false) {
+#ifdef __HIP_PLATFORM_HCC__
+  return false;
+#else
+  return check_fast_path_restrictions(tensorVec, scalarList, does_op_promote_integer_inputs_to_float);
 #endif
 }
 
