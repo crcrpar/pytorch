@@ -194,7 +194,7 @@ std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
 }                                                                         \
 void foreach_tensor_##op_name##_cuda_(TensorList tensors) {                        \
     check_foreach_api_restrictions(tensors);                                       \
-    for (std::vector<std::vector<at::Tensor>> & tensor_vec : split_tensors_by_device_and_dtype(tensors)) {         \
+    for (auto & tensor_vec : split_tensorlist_for_inplace(tensors)) {         \
         if (!can_use_fast_route(tensor_vec)) {                                   \
             at::native::foreach_tensor_##op_name##_slow_(tensor_vec[0]);           \
         } else {                                                                   \

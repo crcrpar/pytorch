@@ -7,47 +7,53 @@
 #include <unordered_map>
 #include <utility>
 #include <type_traits>
+#include <string>
 
 namespace at {
 namespace native {
 namespace {
 
-struct DeviceHashFunctor {
-    size_t operator() (const at::Device & device) const {
-        return std::hash<std::string>()(device.str());
-    }
-};
+using _device_key_t = std::string;
+using _dtype_key_t = int8_t;
+using _tensorvec_t = std::vector<at::Tensor>;
+using _mta_input_t = std::vector<_tensorvec_t>;
 
-struct DtypeHashFunctor {
-    size_t operator() (const at::ScalarType & scalar_type) const {
-        return std::hash<int>()(static_cast<int>(scalar_type));
-    }
-};
-
-std::unordered_map<std::string, std::vector<at::Tensor>> _split_tensors_by_device_and_dtype(TensorList tensors) {
-  std::unordered_map<std::string, std::vector<at::Tensor>> hash;
-  for (auto & t : tensors) {
-    const std::string key = t.device().str() + "_" + std::to_string(static_cast<int>(t.scalar_type()));
-    if (hash.count(key) > 0) {
-      hash[key].emplace_back(t);
+// C++ version of https://github.com/pytorch/pytorch/blob/5211eeb22b17f706462bff4815f3c4bbf1af1c0c/torch/cuda/amp/grad_scaler.py#L194-L220
+std::unordered_map<_device_key_t, std::unordered_map<_dtype_key_t, _tensorvec_t>>
+_split_tensorlist_by_device_and_dtype(TensorList tensors) {
+  std::unordered_map<_device_key_t, std::unordered_map<_dtype_key_t, _tensorvec_t>> hash;
+  for (const auto & t : tensors) {
+    const _device_key_t device_key = t.device().str();
+    const _dtype_key_t dtype_key = static_cast<int8_t>(t.scalar_type());
+    if (!hash.count(device_key)) {
+      hash.emplace(device_key, std::unordered_map<_dtype_key_t, _tensorvec_t>{{dtype_key, _tensorvec_t{t}}});
     } else {
-      hash.emplace(key, std::vector<at::Tensor>{t});
+      if (!hash[device_key].count(dtype_key)) {
+        hash[device_key].emplace(dtype_key, _tensorvec_t{t});
+      } else {
+        hash[device_key][dtype_key].emplace_back(t);
+      }
     }
   }
   return hash;
 }
 
 // TODO(mkozuki): Write versions for binary&pointwise functions
-std::vector<std::vector<std::vector<at::Tensor>>> split_tensors_by_device_and_dtype(TensorList tensors) {
-  const auto hash = _split_tensors_by_device_and_dtype(tensors);
-  std::vector<std::vector<std::vector<Tensor>>> grouped_tensors;
-  std::transform(
-    hash.begin(),
-    hash.end(),
-    std::back_inserter(grouped_tensors),
-    [] (const std::unordered_map<std::string, std::vector<at::Tensor>>::value_type &pair) {
-      return std::vector<std::vector<at::Tensor>>{pair.second};
-    });
+/* Split TensorList by device & dtype.
+ *
+ * This function is used by in-place unary foreach functions.
+ * Args:
+ *  - TensorList tensors
+ * Returns:
+ *  - vector<vector<vector<Tensor>>: Caller can directly pass each element to MTA function.
+ */
+std::vector<_mta_input_t> split_tensorlist_for_inplace(TensorList tensors) {
+  std::vector<_mta_input_t> grouped_tensors;
+  for (auto & device_dtypetensors_pair : _split_tensorlist_by_device_and_dtype(tensors)) {
+    for (auto & dtype_tensors_pair : device_dtypetensors_pair.second) {
+      grouped_tensors.emplace_back(_mta_input_t{dtype_tensors_pair.second});
+    }
+  }
   return grouped_tensors;
 }
 
