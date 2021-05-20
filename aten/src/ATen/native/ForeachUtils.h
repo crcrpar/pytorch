@@ -24,32 +24,100 @@ struct DtypeHashFunctor {
     }
 };
 
-std::unordered_map<std::string, std::vector<at::Tensor>> _split_tensors_by_device_and_dtype(TensorList tensors) {
-  std::unordered_map<std::string, std::vector<at::Tensor>> hash;
-  for (auto & t : tensors) {
-    const std::string key = t.device().str() + "_" + std::to_string(static_cast<int>(t.scalar_type()));
-    if (hash.count(key) > 0) {
-      hash[key].emplace_back(t);
+using device_type_t = std::string;
+using scalar_type_t = int;
+using dtype_to_tensorvector_t = std::unordered_map< scalar_type_t, std::vector<at::Tensor> >;
+using dev_dtype_tensors_t     = std::unordered_map< device_type_t, dtype_to_tensorvector_t>;
+using dev_dtype_index_t       = std::unordered_map< device_type_t, std::unordered_map<scalar_type_t, std::vector<size_t>> >;
+
+std::pair<dev_dtype_tensors_t, dev_dtype_index_t> _split_tensors_by_device_and_dtype(TensorList tensors) {
+  dev_dtype_tensors_t hash;
+  dev_dtype_index_t index_record;
+
+  for (const auto & i : c10::irange(tensors.size())) {
+    auto & t  = tensors[i];
+    const std::string device_key = t.device().str();
+    const int scalar_type_key = static_cast<int>(t.scalar_type());
+    if (hash.count(device_key) > 0) {
+      if (hash[device_key].count(scalar_type_key) > 0) {
+        hash[device_key][scalar_type_key].emplace_back(t);
+        index_record[device_key][scalar_type_key].emplace_back(i);
+      } else {
+        hash[device_key].emplace(scalar_type_key, std::vector<at::Tensor>{t});
+        index_record[device_key].emplace(scalar_type_key, std::vector<size_t>{i});
+      }
     } else {
-      hash.emplace(key, std::vector<at::Tensor>{t});
+      std::unordered_map<int, std::vector<at::Tensor>> tmp {{scalar_type_key, std::vector<at::Tensor>{t}}};
+      hash.emplace(device_key, std::move(tmp));
+
+      std::unordered_map<int, std::vector<size_t>> dd_idx {{scalar_type_key, std::vector<size_t>{i}}};
+      index_record.emplace(device_key, dd_idx);
     }
+
   }
-  return hash;
+  // return std::make_pair<dev_dtype_tensors_t, dev_dtype_index_t>(hash, index_record);
+  return {hash, index_record};
 }
 
-// TODO(mkozuki): Write versions for binary&pointwise functions
-std::vector<std::vector<std::vector<at::Tensor>>> split_tensors_by_device_and_dtype(TensorList tensors) {
-  const auto hash = _split_tensors_by_device_and_dtype(tensors);
+using triple_nested_tensor_vector_t = std::vector<std::vector<std::vector<at::Tensor>>>;
+triple_nested_tensor_vector_t split_tensors_by_device_and_dtype(TensorList tensors) {
+  auto hash = _split_tensors_by_device_and_dtype(tensors).first;
   std::vector<std::vector<std::vector<Tensor>>> grouped_tensors;
-  std::transform(
-    hash.begin(),
-    hash.end(),
-    std::back_inserter(grouped_tensors),
-    [] (const std::unordered_map<std::string, std::vector<at::Tensor>>::value_type &pair) {
-      return std::vector<std::vector<at::Tensor>>{pair.second};
-    });
+  for (auto & dev_pair : hash) {
+    for (auto & dtype_pair : dev_pair.second) {
+      auto _tensors = std::vector<std::vector<at::Tensor>>{dtype_pair.second};
+      grouped_tensors.emplace_back(std::move(_tensors));
+    }
+  }
   return grouped_tensors;
 }
+
+using output_reorder_map_t = std::unordered_map<std::string, std::pair<size_t, std::vector<size_t>>>;
+std::pair<triple_nested_tensor_vector_t, std::vector<size_t>>
+split_tensors_by_device_and_dtype_with_order(TensorList tensors) {
+  auto ret = _split_tensors_by_device_and_dtype(tensors);
+  dev_dtype_tensors_t & hash = ret.first;
+  dev_dtype_index_t & index_mapper = ret.second;
+
+  std::vector<size_t> to_orig_order;
+  to_orig_order.reserve(tensors.size());
+
+  size_t i = 0;
+  triple_nested_tensor_vector_t grouped_tensors;
+
+  for (auto & dev_pair : hash) {
+    const auto & device_key = dev_pair.first;
+    for (auto & dtype_pair : dev_pair.second) {
+      const auto & scalar_type_key = dtype_pair.first;
+      auto _tensors = std::vector<std::vector<at::Tensor>>{dtype_pair.second};
+      grouped_tensors.emplace_back(std::move(_tensors));
+
+      for (const auto & idx : index_mapper[device_key][scalar_type_key]) {
+        to_orig_order.emplace_back(idx);
+      }
+    }
+  }
+
+  return {grouped_tensors, to_orig_order};
+}
+
+void sort_results(std::vector<at::Tensor>& arr, std::vector<size_t>& index) {
+  // Tensor old_target_e;
+  for (size_t i = 0; i < arr.size(); i++) {
+    while (index[i] != i) {
+      int old_target_i = index[index[i]];
+      Tensor old_target_e {std::move(arr[index[i]])};
+      arr[index[i]] = arr[i];
+      index[index[i]] = index[i];
+      index[i] = old_target_i;
+      arr[i] = old_target_e;
+    }
+  }
+}
+
+// void sort_output_tensors(std::vector<at::Tensor>& outputs, const std::vector<size_t>& to_orig_order) {
+//   sort_vector_by_indices(outputs, output_reorder_map);
+// }
 
 // Check foreach API restrictions
 // - Tensor lists must be non-empty.
