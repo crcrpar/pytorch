@@ -60,7 +60,7 @@ void foreach_pointwise_op_(TensorList input, TensorList tensors1, TensorList ten
     tensor_lists.emplace_back(tensors1.vec());
     tensor_lists.emplace_back(tensors2.vec());
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, input[0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<3, opmath_t>(tensor_lists,
                                         scalars,
@@ -87,7 +87,7 @@ std::vector<Tensor> foreach_pointwise_op(TensorList input, TensorList tensors1, 
     tensor_lists.emplace_back(tensors2.vec());
     tensor_lists.emplace_back(std::move(vec_res));
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND2(kHalf, kBFloat16, input[0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<4, opmath_t>(tensor_lists,
                                         scalars,
@@ -150,9 +150,6 @@ FOREACH_POINTWISE_OP_SCALARLIST(addcmul, std::multiplies);
 FOREACH_POINTWISE_OP_SCALARLIST(addcdiv, std::divides);
 
 
-// Why bool tensors are pushed to slowpath?
-// Because `AT_DISPATCH_ALL_TYPES_AND` is used below.
-// TODO(mkozuki): Check whether it's possible to handle bool tensors in fastpath.
 #define FOREACH_MAXIMUM_MINIMUM_OP(NAME, OP)                                                               \
 std::vector<Tensor> foreach_tensor_##NAME##_cuda(TensorList tensors1, TensorList tensors2) {               \
     check_foreach_api_restrictions(tensors1, tensors2);                                                    \
