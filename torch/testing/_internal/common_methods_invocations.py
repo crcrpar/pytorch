@@ -1807,9 +1807,10 @@ def get_foreach_method_names(name):
     method = getattr(torch, method_name, None)
     method_inplace = getattr(torch, method_name_inplace, None)
 
-    ref = getattr(torch.Tensor, name, None)
+    ref = getattr(torch, name, None)
+    ref_inplace = getattr(torch.Tensor, name + "_", None)
 
-    return method, method_inplace, ref
+    return method, method_inplace, ref, ref_inplace
 
 class ForeachUnaryFuncInfo(OpInfo):
     """Early version of a specialized OpInfo for foreach unary functions"""
@@ -1822,19 +1823,22 @@ class ForeachUnaryFuncInfo(OpInfo):
                  safe_casts_outputs=True,
                  sample_inputs_func=sample_inputs_foreach,
                  **kwargs):
-        super(ForeachUnaryFuncInfo, self).__init__("_foreach_" + name,
-                                                   dtypes=dtypes,
-                                                   dtypesIfCPU=dtypesIfCPU,
-                                                   dtypesIfCUDA=dtypesIfCUDA,
-                                                   dtypesIfROCM=dtypesIfROCM,
-                                                   safe_casts_outputs=safe_casts_outputs,
-                                                   sample_inputs_func=sample_inputs_func,
-                                                   **kwargs)
+        super().__init__(
+            "_foreach_" + name,
+            dtypes=dtypes,
+            dtypesIfCPU=dtypesIfCPU,
+            dtypesIfCUDA=dtypesIfCUDA,
+            dtypesIfROCM=dtypesIfROCM,
+            safe_casts_outputs=safe_casts_outputs,
+            sample_inputs_func=sample_inputs_func,
+            **kwargs
+        )
 
-        foreach_method, foreach_method_inplace, torch_ref_method = get_foreach_method_names(name)
+        foreach_method, foreach_method_inplace, torch_ref_method, torch_ref_inplace_method = get_foreach_method_names(name)
         self.method_variant = foreach_method
         self.inplace_variant = foreach_method_inplace
         self.ref = torch_ref_method
+        self.ref_inplace = torch_ref_inplace_method
 
 
 def sample_inputs_linalg_cholesky_inverse(op_info, device, dtype, requires_grad=False):
