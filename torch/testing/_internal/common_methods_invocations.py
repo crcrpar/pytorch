@@ -1794,8 +1794,8 @@ class ShapeFuncInfo(OpInfo):
                                             **kwargs)
         self.ref = ref
 
-def sample_inputs_foreach(self, device, dtype, N):
-    tensors = [make_tensor((N, N), device, dtype) for _ in range(N)]
+def sample_inputs_foreach(self, device, dtype, N, noncontiguous=False):
+    tensors = [make_tensor((N, N), device, dtype, noncontiguous=noncontiguous) for _ in range(N)]
     return tensors
 
 
