@@ -1807,9 +1807,8 @@ def get_foreach_method_names(name):
     method = getattr(torch, method_name, None)
     method_inplace = getattr(torch, method_name_inplace, None)
 
-    ref = getattr(torch.Tensor, name, None)
-
-    return method, method_inplace, ref
+    ref = getattr(torch, name, None)
+    return method, method_inplace, ref, name + "_"
 
 class ForeachFuncInfo(OpInfo):
     """Early version of a specialized OpInfo for foreach unary functions"""
