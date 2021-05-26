@@ -89,7 +89,7 @@ class DeviceGuard {
  *
  *    OptionalDeviceGuard g;
  *    for (const auto& t : tensors) {
- *      g.set_device(t.device());
+ *      g.reset_device(t.device());
  *      do_something_with(t);
  *    }
  *
