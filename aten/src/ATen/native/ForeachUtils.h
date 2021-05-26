@@ -49,13 +49,45 @@ void check_foreach_api_restrictions(TensorList tensors1, TensorList tensors2, Te
   TORCH_CHECK(tensors1.size() == scalars.size(), "Tensor list must have same number of elements as scalar list, got ", tensors1.size(), " and ", scalars.size());
 }
 
+void check_foreach_api_restrictions(const std::vector<std::vector<at::Tensor>> & mta_input_tensors, ArrayRef<Scalar> scalars = {}) {
+  switch (mta_input_tensors.size()) {
+    case 1:
+      check_foreach_api_restrictions(
+        TensorList{mta_input_tensors[0]},
+        scalars);
+      break;
+    case 2:
+      TORCH_CHECK(scalars.size() == 0, "For Binary ops with two tensors, scalars must be 0");
+      check_foreach_api_restrictions(
+        TensorList{mta_input_tensors[0]},
+        TensorList{mta_input_tensors[1]});
+      break;
+    case 3:
+      if (scalars.size() == 0) {
+        check_foreach_api_restrictions(
+          TensorList{mta_input_tensors[0]},
+          TensorList{mta_input_tensors[1]},
+          TensorList{mta_input_tensors[2]});
+      } else {
+        check_foreach_api_restrictions(
+          TensorList{mta_input_tensors[0]},
+          TensorList{mta_input_tensors[1]},
+          TensorList{mta_input_tensors[2]},
+          scalars);
+      }
+      break;
+    default:
+      TORCH_CHECK(false, "Invalid number of input vectors of tensors.");
+      break;
+  }
+}
+
 // To go via 'fast' path, several conditions must be satisfied
 // - All tensors in all lists must have the same dtype.
 // - All tensors must be on the same device
 // - All tensors must have strided layout
 // - All tensors must be non-overlapping and dense
 // - Resulting tensor must have the same dtype as the input one
-
 // Please, make sure to call check_foreach_api_restrictions before calling this method.
 // There is a set of preconditions that have to be satisfied.
 bool check_fast_path_restrictions(
@@ -133,6 +165,181 @@ bool can_use_fast_route(TensorList tensors1, TensorList tensors2, bool does_op_p
 #else
   return can_use_fast_route({tensors1, tensors2}, {}, does_op_promote_integer_inputs_to_float);
 #endif
+}
+
+// note(mkozuki): should write a dedicated check_fast_path_restrictions for this?
+bool can_use_fast_route(
+    const std::vector<std::vector<Tensor>>& mta_input_tensors,
+    ArrayRef<Scalar> scalarList = {},
+    bool does_op_promote_integer_inputs_to_float = false) {
+#ifdef __HIP_PLATFORM_HCC_
+  return false;
+#else
+  std::vector<TensorList> tmp;
+  for (const auto & tensorvec : mta_input_tensors) {
+    tmp.emplace_back(TensorList{tensorvec});
+  }
+  return check_fast_path_restrictions(ArrayRef<TensorList>{tmp}, scalarList, does_op_promote_integer_inputs_to_float);
+#endif
+}
+// Tensor Grouping: Separate input Tensors of TensorList(s) by their device&dtype into `vector<vector<Tensor>>`.
+#include <unordered_map>
+#include <string>
+
+using tensorvec_t = std::vector<at::Tensor>;
+using mta_input_tensors_t = std::vector<tensorvec_t>;
+using scalarvec_t = std::vector<Scalar>;
+using indexvec_t = std::vector<size_t>;
+
+struct MTAInputTensorsAndScalars {
+  mta_input_tensors_t mta_input_tensors;
+  scalarvec_t mta_input_scalars;
+  indexvec_t indices;
+
+  MTAInputTensorsAndScalars() : mta_input_tensors{}, mta_input_scalars{}, indices{} {}
+
+  // Unary & Binary with Scalar
+  MTAInputTensorsAndScalars(Tensor & t, const size_t index)
+    : mta_input_tensors{ tensorvec_t{t} }, mta_input_scalars{}, indices{index} {}
+
+  void append(Tensor & t, const size_t index) {
+    mta_input_tensors[0].emplace_back(t);
+    indices.emplace_back(index);
+  }
+
+  // Binary with 2 TensorLists
+  MTAInputTensorsAndScalars(Tensor & t1, Tensor & t2, const size_t index)
+    : mta_input_tensors{ tensorvec_t{t1}, tensorvec_t{t2} }, mta_input_scalars{}, indices{index} {}
+
+  void append(Tensor & t1, Tensor & t2, const size_t index) {
+    mta_input_tensors[0].emplace_back(t1);
+    mta_input_tensors[1].emplace_back(t2);
+    indices.emplace_back(index);
+  }
+
+  // Binary with TensorList and ArrayRef<Scalar>
+  MTAInputTensorsAndScalars(Tensor & t, Scalar & scalar, const size_t index)
+    : mta_input_tensors{ tensorvec_t{t} }, mta_input_scalars{ scalar }, indices{index} {}
+
+  void append(Tensor & t, Scalar & scalar, const size_t index) {
+    mta_input_tensors[0].emplace_back(t);
+    mta_input_scalars.emplace_back(scalar);
+    indices.emplace_back(index);
+  }
+
+  // Pointwise
+  MTAInputTensorsAndScalars(Tensor & i, Tensor & t1, Tensor & t2, Scalar & scalar, const size_t index)
+    : mta_input_tensors{ tensorvec_t{i}, tensorvec_t{t1}, tensorvec_t{t2} }, mta_input_scalars{ scalar }, indices{index} {}
+
+  void append(Tensor & i, Tensor & t1, Tensor & t2, Scalar & scalar, const size_t index) {
+    mta_input_tensors[0].emplace_back(i);
+    mta_input_tensors[1].emplace_back(t1);
+    mta_input_tensors[2].emplace_back(t2);
+    mta_input_scalars.emplace_back(scalar);
+    indices.emplace_back(index);
+  }
+
+  ArrayRef<Scalar> scalars() const {
+    TORCH_CHECK(mta_input_scalars.size() > 0, "No scalar values stored.");
+    return ArrayRef<Scalar>(mta_input_scalars);
+  }
+};
+
+using devicekey_t = std::string;
+template<int N_TENSORS> using dtypekey_t = std::array<uint8_t, N_TENSORS>;
+
+template<int N_TENSORS>
+struct DtypeHashFunctor {
+  size_t operator() (const dtypekey_t<N_TENSORS> dtypes) const {
+    size_t seed = 0;
+    for (const auto & v : dtypes) {
+      seed ^= std::hash<uint8_t>()(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    }
+    return seed;
+  }
+};
+
+template<int N_TENSORS> using dtype_map_t = std::unordered_map< dtypekey_t<N_TENSORS>, MTAInputTensorsAndScalars, DtypeHashFunctor<N_TENSORS> >;
+template<int N_TENSORS> using device_map_t = std::unordered_map< devicekey_t, dtype_map_t<N_TENSORS> >;
+
+Scalar get_scalar(ArrayRef<Scalar> scalarlist, const size_t i) {
+  switch (scalarlist.size()) {
+    case 0:
+      return 0;
+      break;
+    case 1:
+      return scalarlist[0];
+      break;
+    default:
+      return scalarlist[i];
+      break;
+  }
+}
+
+device_map_t<1> separate_tensors_by_device_and_dtype(TensorList tensors, ArrayRef<Scalar> scalarlist = {}) {
+  device_map_t<1> grouped_tensors_map;
+
+  for (const auto & i : c10::irange(tensors.size())) {
+    auto t = tensors[i];
+    devicekey_t dev_key = t.device().str();
+    dtypekey_t<1> dtype_key { static_cast<uint8_t>(t.scalar_type()) };
+    auto scalar = get_scalar(scalarlist, i);
+    if (!grouped_tensors_map.count(dev_key)) {
+      grouped_tensors_map.emplace(dev_key, dtype_map_t<1>{{ dtype_key, MTAInputTensorsAndScalars(t, scalar, i)  }});
+    } else {
+      if (!grouped_tensors_map[dev_key].count(dtype_key)) {
+        grouped_tensors_map[dev_key].emplace(dtype_key, MTAInputTensorsAndScalars(t, scalar, i));
+      } else {
+        grouped_tensors_map[dev_key][dtype_key].append(t, scalar, i);
+      }
+    }
+  }
+
+  return grouped_tensors_map;
+}
+
+device_map_t<2> separate_tensors_by_device_and_dtype(TensorList tensors1, TensorList tensors2) {
+  device_map_t<2> grouped_tensors_map;
+  for (const auto & i : c10::irange(tensors1.size())) {
+    auto t1 = tensors1[i];
+    auto t2 = tensors2[i];
+    TORCH_CHECK(t1.device() == t2.device(), "Operand tensors must be on the same device.");
+    devicekey_t dev_key = t1.device().str();
+    dtypekey_t<2> dtype_key { static_cast<uint8_t>(t1.scalar_type()), static_cast<uint8_t>(t2.scalar_type()) };
+    if (!grouped_tensors_map.count(dev_key)) {
+      grouped_tensors_map.emplace(dev_key, dtype_map_t<2>{{ dtype_key, MTAInputTensorsAndScalars(t1, t2, i) }});
+    } else {
+      if (!grouped_tensors_map[dev_key].count(dtype_key)) {
+        grouped_tensors_map[dev_key].emplace(dtype_key, MTAInputTensorsAndScalars(t1, t2, i));
+      } else {
+        grouped_tensors_map[dev_key][dtype_key].append(t1, t2, i);
+      }
+    }
+  }
+  return grouped_tensors_map;
+}
+
+device_map_t<3> separate_tensors_by_device_and_dtype(TensorList input, TensorList tensors1, TensorList tensors2, ArrayRef<Scalar> scalarlist = {}) {
+  device_map_t<3> grouped_tensors_map;
+  for (const auto & i : c10::irange(input.size())) {
+    auto in_tensor = input[i];
+    auto t1 = tensors1[i];
+    auto t2 = tensors2[i];
+    TORCH_CHECK(in_tensor.device() == t1.device() && t1.device() == t2.device(), "Operand tensors must be on the same device.");
+    devicekey_t dev_key = in_tensor.device().str();
+    dtypekey_t<3> dtype_key { static_cast<uint8_t>(in_tensor.scalar_type()), static_cast<uint8_t>(t1.scalar_type()), static_cast<uint8_t>(t2.scalar_type()) };
+    auto scalar = get_scalar(scalarlist, i);
+    if (!grouped_tensors_map.count(dev_key)) {
+      grouped_tensors_map.emplace(dev_key, dtype_map_t<3>{{ dtype_key, MTAInputTensorsAndScalars(in_tensor, t1, t2, scalar, i) }});
+    } else {
+      if (!grouped_tensors_map[dev_key].count(dtype_key)) {
+        grouped_tensors_map[dev_key].emplace(dtype_key, MTAInputTensorsAndScalars(in_tensor, t1, t2, scalar, i));
+      } else {
+        grouped_tensors_map[dev_key][dtype_key].append(in_tensor, t1, t2, scalar, i);
+      }
+    }
+  }
+  return grouped_tensors_map;
 }
 
 }
