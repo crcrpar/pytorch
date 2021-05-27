@@ -96,6 +96,9 @@ bool check_fast_path_restrictions(
   bool does_op_promote_integer_inputs_to_float = false) {
     const auto expected_dtype = tensorLists[0][0].dtype();
     const auto expected_device = tensorLists[0][0].device();
+    if (!expected_device.is_cuda()) {
+      return false;
+    }
 
     auto is_tensor_okay = [&](const Tensor& tensor) {
       return tensor.dtype() == expected_dtype &&
@@ -199,10 +202,10 @@ struct MTAInputTensorsAndScalars {
   MTAInputTensorsAndScalars() : mta_input_tensors{}, mta_input_scalars{}, indices{} {}
 
   // Unary & Binary with Scalar
-  MTAInputTensorsAndScalars(Tensor & t, const size_t index)
+  MTAInputTensorsAndScalars(const Tensor & t, const size_t index)
     : mta_input_tensors{ tensorvec_t{t} }, mta_input_scalars{}, indices{index} {}
 
-  void append(Tensor & t, const size_t index) {
+  void append(const Tensor & t, const size_t index) {
     mta_input_tensors[0].emplace_back(t);
     indices.emplace_back(index);
   }
@@ -218,10 +221,10 @@ struct MTAInputTensorsAndScalars {
   }
 
   // Binary with TensorList and ArrayRef<Scalar>
-  MTAInputTensorsAndScalars(Tensor & t, Scalar & scalar, const size_t index)
+  MTAInputTensorsAndScalars(const Tensor & t, Scalar & scalar, const size_t index)
     : mta_input_tensors{ tensorvec_t{t} }, mta_input_scalars{ scalar }, indices{index} {}
 
-  void append(Tensor & t, Scalar & scalar, const size_t index) {
+  void append(const Tensor & t, Scalar & scalar, const size_t index) {
     mta_input_tensors[0].emplace_back(t);
     mta_input_scalars.emplace_back(scalar);
     indices.emplace_back(index);
@@ -276,11 +279,32 @@ Scalar get_scalar(ArrayRef<Scalar> scalarlist, const size_t i) {
   }
 }
 
-device_map_t<1> separate_tensors_by_device_and_dtype(TensorList tensors, ArrayRef<Scalar> scalarlist = {}) {
+device_map_t<1> separate_tensors_by_device_and_dtype(TensorList tensors) {
   device_map_t<1> grouped_tensors_map;
 
   for (const auto & i : c10::irange(tensors.size())) {
-    auto t = tensors[i];
+    const at::Tensor & t = tensors[i];
+    devicekey_t dev_key {t.device().str()};
+    dtypekey_t<1> dtype_key {static_cast<uint8_t>(t.scalar_type())};
+
+    if (!grouped_tensors_map.count(dev_key)) {
+      grouped_tensors_map.emplace(dev_key, dtype_map_t<1>{{ dtype_key, MTAInputTensorsAndScalars(t, i) }});
+    } else {
+      if (!grouped_tensors_map[dev_key].count(dtype_key)) {
+        grouped_tensors_map[dev_key].emplace(dtype_key, MTAInputTensorsAndScalars(t, i));
+      } else {
+        grouped_tensors_map[dev_key][dtype_key].append(t, i);
+      }
+    }
+  }
+  return grouped_tensors_map;
+}
+
+device_map_t<1> separate_tensors_by_device_and_dtype(TensorList tensors, ArrayRef<Scalar> scalarlist) {
+  device_map_t<1> grouped_tensors_map;
+
+  for (const auto & i : c10::irange(tensors.size())) {
+    auto & t = tensors[i];
     devicekey_t dev_key = t.device().str();
     dtypekey_t<1> dtype_key { static_cast<uint8_t>(t.scalar_type()) };
     auto scalar = get_scalar(scalarlist, i);
