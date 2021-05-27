@@ -4,16 +4,8 @@
 
 namespace at { namespace native {
 
-namespace {
-constexpr int kTensors = 2;
-constexpr int kTensorsInplace = 1;
-constexpr int kRArgsDepth = 1;
-constexpr int kRArgsDepthInplace = 1;
-constexpr int kResArgIndex = 1;
-constexpr int kResArgIndexInplace = 0;
-}
-
-template <typename scalar_t, template<class> class Op> std::vector<at::Tensor> foreach_unary_op(std::vector<std::vector<at::Tensor>>& mta_input_tensors) {
+template <typename scalar_t, template<class> class Op>
+std::vector<at::Tensor> foreach_unary_op(std::vector<std::vector<at::Tensor>>& mta_input_tensors) {
     std::vector<at::Tensor> vec_res;
     vec_res.reserve(mta_input_tensors[0].size());
     for (const auto & t : mta_input_tensors[0]) {
@@ -22,19 +14,20 @@ template <typename scalar_t, template<class> class Op> std::vector<at::Tensor> f
     mta_input_tensors.emplace_back(std::move(vec_res));
 
     using opmath_t = typename get_opmath_t<scalar_t>::opmath_t;
-    multi_tensor_apply<kTensors>(
+    multi_tensor_apply<2>(
         mta_input_tensors,
-        UnaryOpFunctor<scalar_t, /* depth */ kTensors, /* r_args_depth */ kRArgsDepth, /* res_arg_index */ kResArgIndex>(),
+        UnaryOpFunctor<scalar_t, /* depth */ 2, /* r_args_depth */ 1, /* res_arg_index */ 1>(),
         Op<opmath_t>()
     );
     return mta_input_tensors[1];
 }
 
-template <typename scalar_t, template<class> class Op> void foreach_unary_op_(std::vector<std::vector<at::Tensor>>& mta_input_tensors) {
+template <typename scalar_t, template<class> class Op>
+void foreach_unary_op_(std::vector<std::vector<at::Tensor>>& mta_input_tensors) {
     using opmath_t = typename get_opmath_t<scalar_t>::opmath_t;
-    multi_tensor_apply<kTensorsInplace>(
+    multi_tensor_apply<1>(
         mta_input_tensors,
-        UnaryOpFunctor<scalar_t, /* depth */ kTensorsInplace, /* r_args_depth */ kRArgsDepthInplace, /* res_arg_index */ kRArgsDepthInplace>(),
+        UnaryOpFunctor<scalar_t, /* depth */ 1, /* r_args_depth */ 1, /* res_arg_index */ 0>(),
         Op<opmath_t>()
     );
 }
@@ -139,6 +132,8 @@ struct functor_name {                                                \
     __device__ T operator()(T t) const { return std::op_name(t); }   \
 };                                                                   \
 
+// TODO(mkozuki): DRY the sorting of output tensors
+// TODO(mkozuki): Make sorting inplace?
 // given a functor and a "dispatch function", creates the outplace and inplace operations
 #define OP_CUSTOM_FUNCTOR(function, op_name, functor_name)                \
 std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
@@ -146,12 +141,12 @@ std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
                                                                           \
     std::vector<Tensor> result;                                           \
     result.reserve(tensors.size());                                       \
-    std::vector<size_t> index_map;                                        \
-    index_map.reserve(tensors.size());                                    \
+    std::vector<size_t> index_map(tensors.size(), 0);                     \
                                                                           \
+    size_t cur_index = 0;                                                 \
     OptionalDeviceGuard g;                                                \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {                                          \
-        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                    \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                  \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                             \
             auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                                               \
             if (!can_use_fast_route(mta_input_tensors) || has_integral_tensor(mta_input_tensors[0], /* includeBool */ true)) { \
@@ -163,9 +158,11 @@ std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
                     result.emplace_back(std::move(t));                                                                         \
                 }                                                                                                              \
             }                                                                                                                  \
-            for (const auto & i : dtype_mtainputs.second.indices) {       \
-                index_map.emplace_back(i);                                \
+            const auto & indices = dtype_mtainputs.second.indices;        \
+            for (const auto & i : c10::irange(indices.size())) {          \
+                index_map[indices[i]] = cur_index + i;                    \
             }                                                             \
+            cur_index += indices.size();                                  \
         }                                                                 \
     }                                                                     \
     std::vector<Tensor> sorted_result;                                    \
@@ -179,7 +176,7 @@ void foreach_tensor_##op_name##_cuda_(TensorList tensors) {               \
     check_foreach_api_restrictions(tensors);                              \
     OptionalDeviceGuard g;                                                \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {             \
-        g.reset_device(at::Device(dev_dtypemtainputs.first));                                       \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                     \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                \
             auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                  \
             if (!can_use_fast_route(mta_input_tensors) || has_integral_tensor(mta_input_tensors[0], /* includeBool */ true)) {              \
@@ -267,9 +264,9 @@ std::vector<Tensor> foreach_tensor_neg_cuda(TensorList tensors) {
 
     std::vector<Tensor> result;
     result.reserve(tensors.size());
-    std::vector<size_t> index_map;
-    index_map.reserve(tensors.size());
+    std::vector<size_t> index_map(tensors.size(), 0);
 
+    size_t cur_index = 0;
     OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
         g.reset_device(at::Device(dev_dtypemtainputs.first));
@@ -285,11 +282,14 @@ std::vector<Tensor> foreach_tensor_neg_cuda(TensorList tensors) {
                     result.emplace_back(std::move(t));
                 }
             }
-            for (const auto & i : dtype_mtainputs.second.indices) {
-                index_map.emplace_back(i);
+            const auto & indices = dtype_mtainputs.second.indices;
+            for (const auto & i : c10::irange(indices.size())) {
+                index_map[indices[i]] = cur_index + i;
             }
+            cur_index += indices.size();
         }
     }
+
     std::vector<Tensor> sorted_result;
     sorted_result.reserve(tensors.size());
     for (const auto & i : index_map) {
@@ -335,16 +335,16 @@ std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
 
     std::vector<Tensor> result;
     result.reserve(tensors.size());
-    std::vector<size_t> index_map;
-    index_map.reserve(tensors.size());
+    std::vector<size_t> index_map(tensors.size(), 0);
 
+    size_t cur_index = 0;
     OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
             if (!can_use_fast_route(mta_input_tensors) ||
-                std::any_of(mta_input_tensors[0].begin(), mta_input_tensors[1].begin(),
+                std::any_of(mta_input_tensors[0].begin(), mta_input_tensors[0].begin(),
                     [](const auto & t) { return at::isComplexType(t.scalar_type()); })
             ) {
                 for (const auto & t : at::native::foreach_tensor_abs_slow(TensorList{mta_input_tensors[0]})) {
@@ -355,9 +355,11 @@ std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
                     result.emplace_back(std::move(t));
                 }
             }
-            for (const auto & i : dtype_mtainputs.second.indices) {
-                index_map.emplace_back(i);
+            const auto & indices = dtype_mtainputs.second.indices;
+            for (const auto & i : c10::irange(indices.size())) {
+                index_map[indices[i]] = cur_index + i;
             }
+            cur_index += indices.size();
         }
     }
     std::vector<Tensor> sorted_result;
@@ -404,13 +406,9 @@ void foreach_tensor_zero_cuda_(TensorList tensors) {
                     mta_input_tensors[0][0].scalar_type(),
                     "foreach_zero_cuda_",
                     [&]() {
-                        multi_tensor_apply<kTensorsInplace>(
+                        multi_tensor_apply<1>(
                             mta_input_tensors,
-                            ZeroFunctor<
-                                scalar_t,
-                                /* depth */ kTensorsInplace,
-                                /* r_args_depth */ kRArgsDepthInplace,
-                                /* res_arg_index */ kResArgIndexInplace>()
+                            ZeroFunctor<scalar_t, /* depth */ 1, /* r_args_depth */ 1, /* res_arg_index */ 0>()
                         );
                     }
                 );
