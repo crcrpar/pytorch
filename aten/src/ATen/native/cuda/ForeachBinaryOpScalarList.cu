@@ -7,64 +7,146 @@ namespace at { namespace native {
 
 template<template<class> class Op>
 std::vector<Tensor> foreach_binary_op(TensorList tensors, at::ArrayRef<Scalar> scalars) {
-    std::vector<std::vector<at::Tensor>> tensor_lists;
+    std::vector<std::vector<Tensor>> tensor_lists{tensors.vec()};
     std::vector<at::Tensor> vec_res;
     vec_res.reserve(tensors.size());
-    for (const auto& t: tensors) {
+    for (const auto & t : tensors) {
         vec_res.emplace_back(at::native::empty_like(t));
     }
-
-    tensor_lists.emplace_back(tensors.vec());
-    tensor_lists.emplace_back(vec_res);
-
-    AT_DISPATCH_ALL_TYPES_AND3(kBFloat16, kHalf, kBool, tensors[0].scalar_type(), "foreach_binary_op_scalarlist_cuda", [&]() {
-        using opmath_t = get_opmath_t<scalar_t>::opmath_t;
-        multi_tensor_apply<2, opmath_t>(tensor_lists,
-                                        scalars,
-                                        BinaryOpScalarListFunctor<scalar_t,
-                                                                  /* depth */ 2,
-                                                                  /* r_args_depth */ 1,
-                                                                  /* res_arg_index */ 1>(),
-
-                                        Op<opmath_t>());
-    });
+    tensor_lists.emplace_back(std::move(vec_res));
+    AT_DISPATCH_ALL_TYPES_AND3(
+        kBFloat16, kHalf, kBool,
+        tensors[0].scalar_type(),
+        "foreach_binary_op_scalarlist_cuda",
+        [&]() {
+            using opmath_t = get_opmath_t<scalar_t>::opmath_t;
+            multi_tensor_apply<2, opmath_t>(
+                tensor_lists,
+                scalars,
+                BinaryOpScalarListFunctor<scalar_t, /* depth */ 2, /* r_args_depth */ 1, /* res_arg_index */ 1>(),
+                Op<opmath_t>());
+        });
     return tensor_lists[1];
 }
 
 template<template<class> class Op>
-void foreach_binary_op_(TensorList tensors, at::ArrayRef<Scalar> scalars) {
-    std::vector<std::vector<at::Tensor>> tensor_lists;
-    tensor_lists.emplace_back(tensors.vec());
+std::vector<Tensor> foreach_binary_op(std::vector<std::vector<at::Tensor>>& mta_input_tensors, at::ArrayRef<Scalar> scalars) {
+    std::vector<at::Tensor> vec_res;
+    vec_res.reserve(mta_input_tensors[0].size());
+    for (const auto & t : mta_input_tensors[0]) {
+        vec_res.emplace_back(at::native::empty_like(t));
+    }
+    mta_input_tensors.emplace_back(std::move(vec_res));
 
-    AT_DISPATCH_ALL_TYPES_AND3(kBFloat16, kHalf, kBool, tensors[0].scalar_type(), "foreach_binary_op_scalarlist_cuda_", [&]() {
-        using opmath_t = get_opmath_t<scalar_t>::opmath_t;
-        multi_tensor_apply<1, opmath_t>(tensor_lists,
-                                        scalars,
-                                        BinaryOpScalarListFunctor<scalar_t,
-                                                                  /* depth */ 1,
-                                                                  /* r_args_depth */ 1,
-                                                                  /* res_arg_index */ 0>(),
-                                        Op<opmath_t>());
-    });
+    AT_DISPATCH_ALL_TYPES_AND3(
+        kBFloat16, kHalf, kBool,
+        mta_input_tensors[0][0].scalar_type(),
+        "foreach_binary_op_scalarlist_cuda",
+        [&]() {
+            using opmath_t = get_opmath_t<scalar_t>::opmath_t;
+            multi_tensor_apply<2, opmath_t>(
+                mta_input_tensors,
+                scalars,
+                BinaryOpScalarListFunctor<scalar_t, /* depth */ 2, /* r_args_depth */ 1, /* res_arg_index */ 1>(),
+                Op<opmath_t>());
+        });
+
+    return std::move(mta_input_tensors[1]);
+}
+
+template<template<class> class Op>
+void foreach_binary_op_(TensorList tensors, at::ArrayRef<Scalar> scalars) {
+    std::vector<std::vector<Tensor>> tensor_lists{tensors.vec()};
+    AT_DISPATCH_ALL_TYPES_AND3(
+        kBFloat16, kHalf, kBool,
+        tensors[0].scalar_type(), "foreach_binary_op_scalarlist_cuda_",
+        [&]() {
+            using opmath_t = get_opmath_t<scalar_t>::opmath_t;
+            multi_tensor_apply<1, opmath_t>(
+                tensor_lists,
+                scalars,
+                BinaryOpScalarListFunctor<scalar_t, /* depth */ 1, /* r_args_depth */ 1, /* res_arg_index */ 0>(),
+                Op<opmath_t>());
+        });
+}
+
+template<template<class> class Op>
+void foreach_binary_op_(std::vector<std::vector<at::Tensor>>& mta_input_tensors, at::ArrayRef<Scalar> scalars) {
+    AT_DISPATCH_ALL_TYPES_AND3(
+        kBFloat16, kHalf, kBool,
+        mta_input_tensors[0][0].scalar_type(), "foreach_binary_op_scalarlist_cuda_",
+        [&]() {
+            using opmath_t = get_opmath_t<scalar_t>::opmath_t;
+            multi_tensor_apply<1, opmath_t>(
+                mta_input_tensors,
+                scalars,
+                BinaryOpScalarListFunctor<scalar_t, /* depth */ 1, /* r_args_depth */ 1, /* res_arg_index */ 0>(),
+                Op<opmath_t>());
+        });
 }
 
 #define FOREACH_BINARY_OP_SCALARLIST(NAME, OP, DIV_OP)                                                                   \
 void foreach_tensor_##NAME##_scalarlist_kernel_cuda_(TensorList tensors, at::ArrayRef<Scalar> scalars) {                 \
     check_foreach_api_restrictions(tensors, scalars);                                                                    \
-    if (!can_use_fast_route(tensors, scalars, DIV_OP)) {                                                                 \
-        return at::native::foreach_tensor_##NAME##_scalarlist_kernel_slow_(tensors, scalars);                            \
+    if (can_use_fast_route(tensors, scalars, DIV_OP)) {                                                                  \
+        foreach_binary_op_<OP>(tensors, scalars);                                                                        \
+        return;                                                                                                          \
     }                                                                                                                    \
-                                                                                                                         \
-    foreach_binary_op_<OP>(tensors, scalars);                                                                            \
+    OptionalDeviceGuard g;                                                                                               \
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {                           \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                            \
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                       \
+            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                                         \
+            auto  mta_scalars = dtype_mtainputs.second.scalars();                                                        \
+            if (!can_use_fast_route(mta_input_tensors, mta_scalars, DIV_OP)) {                                           \
+                at::native::foreach_tensor_##NAME##_scalarlist_kernel_slow_(                                             \
+                        TensorList{mta_input_tensors[0]}, mta_scalars);                                                  \
+            } else {                                                                                                     \
+                foreach_binary_op_<OP>(mta_input_tensors, scalars);                                                      \
+            }                                                                                                            \
+        }                                                                                                                \
+    }                                                                                                                    \
 }                                                                                                                        \
                                                                                                                          \
 std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_kernel_cuda(TensorList tensors, at::ArrayRef<Scalar> scalars) {   \
     check_foreach_api_restrictions(tensors, scalars);                                                                    \
-    if (!can_use_fast_route(tensors, scalars, DIV_OP)) {                                                                 \
-        return at::native::foreach_tensor_##NAME##_scalarlist_kernel_slow(tensors, scalars);                             \
+    if (can_use_fast_route(tensors, scalars, DIV_OP)) {                                                                  \
+        return foreach_binary_op<OP>(tensors, scalars);                                                                  \
     }                                                                                                                    \
+    std::vector<Tensor> result;                                                                                          \
+    result.reserve(tensors.size());                                                                                      \
+    std::vector<size_t> index_map(tensors.size(), 0);                                                                    \
                                                                                                                          \
-    return foreach_binary_op<OP>(tensors, scalars);                                                                      \
+    size_t cur_index = 0;                                                                                                \
+    OptionalDeviceGuard g;                                                                                               \
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {                           \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                            \
+        for (auto & dtype_mtainputs : dev_dtypemtainputs) {                                                              \
+            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                                         \
+            auto mta_scalars = dtype_mtainputs.second.scalars();                                                         \
+            if (!can_use_fast_route(mta_input_tensors, mta_scalars, DIV_OP)) {                                           \
+                for (const auto & t : at::native::foreach_tensor_##NAME##_scalarlist_kernel_slow(                        \
+                        TensorList{mta_input_tensors[0]}, mta_scalars)) {                                                \
+                    result.emplace_back(std::move(t));                                                                   \
+                }                                                                                                        \
+            } else {                                                                                                     \
+                for (const auto & t : foreach_binary_op<OP>(mta_input_tensors, mta_scalars)) {                           \
+                    result.emplace_back(std::move(t));                                                                   \
+                }                                                                                                        \
+            }                                                                                                            \
+            const auto & indices = dtype_mtainputs.second.indices;                                                       \
+            for (const auto & i : c10::irange(indices.size())) {                                                         \
+                index_map[indices[i]] = cur_index + i;                                                                   \
+            }                                                                                                            \
+            cur_index += indices.size();                                                                                 \
+        }                                                                                                                \
+    }                                                                                                                    \
+    std::vector<Tensor> sorted_result;                                                                                   \
+    sorted_result.reserve(tensors.size());                                                                               \
+    for (const auto & i : index_map) {                                                                                   \
+        sorted_result.emplace_back(std::move(result[i]));                                                                \
+    }                                                                                                                    \
+    return sorted_result;                                                                                                \
 }
 
 FOREACH_BINARY_OP_SCALARLIST(add, std::plus, /*div_op*/ false);
@@ -78,12 +160,24 @@ void foreach_tensor_sub_scalarlist_kernel_cuda_(TensorList tensors, at::ArrayRef
     for (int i = 0; i < tensors.size(); i++) {
         sub_check(tensors[i], scalars[i]);
     }
-
-    if (!can_use_fast_route({tensors}, scalars)) {
-        return at::native::foreach_tensor_sub_scalarlist_kernel_slow_(tensors, scalars);
+    if (can_use_fast_route(tensors, scalars)) {
+        foreach_binary_op_<std::minus>(tensors, scalars);
+        return;
     }
 
-    foreach_binary_op_<std::minus>(tensors, scalars);
+    OptionalDeviceGuard g;
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {
+        g.reset_device(at::Device(dev_dtypemtainputs.first));
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
+            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
+            auto mta_scalars = dtype_mtainputs.second.scalars();
+            if (!can_use_fast_route(mta_input_tensors, scalars)) {
+                at::native::foreach_tensor_sub_scalar_kernel_slow_(TensorList{mta_input_tensors[0]}, mta_scalars);
+            } else {
+                foreach_binary_op_<std::minus>(mta_input_tensors, mta_scalars);
+            }
+        }
+    }
 }
 
 std::vector<Tensor> foreach_tensor_sub_scalarlist_kernel_cuda(TensorList tensors, at::ArrayRef<Scalar> scalars) {
@@ -91,12 +185,44 @@ std::vector<Tensor> foreach_tensor_sub_scalarlist_kernel_cuda(TensorList tensors
     for (int i = 0; i < tensors.size(); i++) {
         sub_check(tensors[i], scalars[i]);
     }
-
-    if (!can_use_fast_route({tensors}, scalars)) {
-        return at::native::foreach_tensor_sub_scalarlist_kernel_slow(tensors, scalars);
+    if (can_use_fast_route(tensors, scalars)) {
+        return foreach_binary_op<std::minus>(tensors, scalars);
     }
 
-    return foreach_binary_op<std::minus>(tensors, scalars);
+    std::vector<at::Tensor> result;
+    result.reserve(tensors.size());
+    std::vector<size_t> index_map(tensors.size(), 0);
+
+    size_t cur_index = 0;
+    OptionalDeviceGuard g;
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {
+        g.reset_device(at::Device(dev_dtypemtainputs.first));
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
+            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
+            auto mta_scalars = dtype_mtainputs.second.scalars();
+            if (!can_use_fast_route(mta_input_tensors, mta_scalars)) {
+                for (const auto & t : at::native::foreach_tensor_sub_scalarlist_kernel_slow(
+                        TensorList{mta_scalars[0]}, mta_scalars)) {
+                    result.emplace_back(std::move(t));
+                }
+            } else {
+                for (const auto & t : foreach_binary_op<std::minus>(tensors, scalars)) {
+                    result.emplace_back(std::move(t));
+                }
+            }
+            const auto & indices = dtype_mtainputs.second.indices;
+            for (const auto & i : c10::irange(indices.size())) {
+                index_map[indices[i]] = cur_index + i;
+            }
+            cur_index += indices.size();
+        }
+    }
+    std::vector<at::Tensor> sorted_result;
+    sorted_result.reserve(tensors.size());
+    for (const auto & i : index_map) {
+        sorted_result.emplace_back(std::move(result[i]));
+    }
+    return sorted_result;
 }
 
 }} // namespace at::native

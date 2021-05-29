@@ -182,9 +182,9 @@ bool check_fast_path_restrictions(
     return true;
 }
 
-bool can_use_fast_route(ArrayRef<TensorList> tensorLists,
-                        ArrayRef<Scalar> scalarList = {},
-                        bool does_op_promote_integer_inputs_to_float = false) {
+bool _can_use_fast_route(ArrayRef<TensorList> tensorLists,
+                        ArrayRef<Scalar> scalarList,
+                        bool does_op_promote_integer_inputs_to_float) {
 #ifdef __HIP_PLATFORM_HCC__
   return false;
 #else
@@ -192,19 +192,43 @@ bool can_use_fast_route(ArrayRef<TensorList> tensorLists,
 #endif
 }
 
-bool can_use_fast_route(TensorList tensors1, TensorList tensors2, bool does_op_promote_integer_inputs_to_float = false) {
-#ifdef __HIP_PLATFORM_HCC__
-  return false;
-#else
-  return can_use_fast_route({tensors1, tensors2}, {}, does_op_promote_integer_inputs_to_float);
-#endif
+bool can_use_fast_route(TensorList tensors) {
+  return _can_use_fast_route(ArrayRef<TensorList>(tensors), {}, false);
 }
 
+bool can_use_fast_route(TensorList tensors1, TensorList tensors2) {
+  ArrayRef<TensorList> tensorLists {tensors1, tensors2};
+  return _can_use_fast_route(tensorLists, {}, false);
+}
+
+bool can_use_fast_route(TensorList tensors1, TensorList tensors2, const Scalar& scalar, const bool does_op_promote_integer_inputs_to_float=false) {
+  ArrayRef<TensorList> tensorLists {tensors1, tensors2};
+  ArrayRef<Scalar> scalarList{scalar};
+  return _can_use_fast_route(tensorLists, scalarList, false);
+}
+
+bool can_use_fast_route(TensorList tensors, ArrayRef<Scalar> scalarList, const bool does_op_promote_integer_inputs_to_float=false) {
+  ArrayRef<TensorList> tensorLists {tensors};
+  return _can_use_fast_route(tensorLists, scalarList, does_op_promote_integer_inputs_to_float);
+}
+
+bool can_use_fast_route(TensorList input, TensorList tensors1, TensorList tensors2, const Scalar& scalar) {
+  ArrayRef<TensorList> tensorLists{input, tensors1, tensors2};
+  ArrayRef<Scalar> scalarList{scalar};
+  return _can_use_fast_route(tensorLists, scalarList, false);
+}
+
+bool can_use_fast_route(TensorList input, TensorList tensors1, TensorList tensors2, ArrayRef<Scalar> scalarList) {
+  ArrayRef<TensorList> tensorLists{input, tensors1, tensors2};
+  return _can_use_fast_route(tensorLists, scalarList, false);
+}
+
+// `can_use_fast_route`s for tensor list assembly path
 // note(mkozuki): should write a dedicated check_fast_path_restrictions for this?
-bool can_use_fast_route(
+bool _can_use_fast_route(
     const std::vector<std::vector<Tensor>>& mta_input_tensors,
-    ArrayRef<Scalar> scalarList = {},
-    bool does_op_promote_integer_inputs_to_float = false) {
+    ArrayRef<Scalar> scalarList,
+    bool does_op_promote_integer_inputs_to_float) {
 #ifdef __HIP_PLATFORM_HCC_
   return false;
 #else
@@ -215,7 +239,33 @@ bool can_use_fast_route(
   return check_fast_path_restrictions(ArrayRef<TensorList>{tmp}, scalarList, does_op_promote_integer_inputs_to_float);
 #endif
 }
-// Tensor Grouping: Separate input Tensors of TensorList(s) by their device&dtype into `vector<vector<Tensor>>`.
+
+bool can_use_fast_route(const std::vector<std::vector<Tensor>>& mta_input_tensors) {
+  ArrayRef<Scalar> scalarList;
+  return _can_use_fast_route(mta_input_tensors, scalarList, false);
+}
+
+bool can_use_fast_route(const std::vector<std::vector<Tensor>>& mta_input_tensors, ArrayRef<Scalar> scalarList) {
+  return _can_use_fast_route(mta_input_tensors, scalarList, false);
+}
+
+// Used in `ForeachBinaryOpList.cu`
+bool can_use_fast_route(
+    const std::vector<std::vector<Tensor>>& mta_input_tensors,
+    bool does_op_promote_integer_inputs_to_float) {
+  ArrayRef<Scalar> scalarList;
+  return _can_use_fast_route(mta_input_tensors, scalarList, does_op_promote_integer_inputs_to_float);
+}
+
+// Used in `ForeachBinaryOpList.cu`
+bool can_use_fast_route(
+    const std::vector<std::vector<Tensor>>& mta_input_tensors,
+    ArrayRef<Scalar> scalarList,
+    bool does_op_promote_integer_inputs_to_float) {
+  return _can_use_fast_route(mta_input_tensors, scalarList, does_op_promote_integer_inputs_to_float);
+}
+
+// Tensor Grouping: Separate input Tensors of TensorList(s) by device&dtype into `vector<vector<Tensor>>`.
 #include <unordered_map>
 #include <string>
 
@@ -224,6 +274,10 @@ using mta_input_tensors_t = std::vector<tensorvec_t>;
 using scalarvec_t = std::vector<Scalar>;
 using indexvec_t = std::vector<size_t>;
 
+// For outplace foreach functions with device&dtype tensor grouping,
+// we need to sort the output tensors.
+// For the sake of this output sorting, MTAInputTensorsAndScalars maintains
+// the index of tensor, a pair of tensors, or a pair of tensor and scalar in the input TensorList(s) and ScalarList.
 struct MTAInputTensorsAndScalars {
   mta_input_tensors_t mta_input_tensors;
   scalarvec_t mta_input_scalars;
@@ -241,17 +295,17 @@ struct MTAInputTensorsAndScalars {
   }
 
   // Binary with 2 TensorLists
-  MTAInputTensorsAndScalars(Tensor & t1, Tensor & t2, const size_t index)
+  MTAInputTensorsAndScalars(const Tensor & t1, const Tensor & t2, const size_t index)
     : mta_input_tensors{ tensorvec_t{t1}, tensorvec_t{t2} }, mta_input_scalars{}, indices{index} {}
 
-  void append(Tensor & t1, Tensor & t2, const size_t index) {
+  void append(const Tensor & t1, const Tensor & t2, const size_t index) {
     mta_input_tensors[0].emplace_back(t1);
     mta_input_tensors[1].emplace_back(t2);
     indices.emplace_back(index);
   }
 
   // Binary with TensorList and ArrayRef<Scalar>
-  MTAInputTensorsAndScalars(const Tensor & t, Scalar & scalar, const size_t index)
+  MTAInputTensorsAndScalars(const Tensor & t, const Scalar & scalar, const size_t index)
     : mta_input_tensors{ tensorvec_t{t} }, mta_input_scalars{ scalar }, indices{index} {}
 
   void append(const Tensor & t, Scalar & scalar, const size_t index) {
@@ -261,10 +315,10 @@ struct MTAInputTensorsAndScalars {
   }
 
   // Pointwise
-  MTAInputTensorsAndScalars(Tensor & i, Tensor & t1, Tensor & t2, Scalar & scalar, const size_t index)
+  MTAInputTensorsAndScalars(const Tensor & i, const Tensor & t1, const Tensor & t2, const Scalar & scalar, const size_t index)
     : mta_input_tensors{ tensorvec_t{i}, tensorvec_t{t1}, tensorvec_t{t2} }, mta_input_scalars{ scalar }, indices{index} {}
 
-  void append(Tensor & i, Tensor & t1, Tensor & t2, Scalar & scalar, const size_t index) {
+  void append(Tensor & i, Tensor & t1, Tensor & t2, const Scalar & scalar, const size_t index) {
     mta_input_tensors[0].emplace_back(i);
     mta_input_tensors[1].emplace_back(t1);
     mta_input_tensors[2].emplace_back(t2);
@@ -334,7 +388,7 @@ device_map_t<1> separate_tensors_by_device_and_dtype(TensorList tensors, ArrayRe
   device_map_t<1> grouped_tensors_map;
 
   for (const auto & i : c10::irange(tensors.size())) {
-    auto & t = tensors[i];
+    const at::Tensor & t = tensors[i];
     devicekey_t dev_key = t.device().str();
     dtypekey_t<1> dtype_key { static_cast<uint8_t>(t.scalar_type()) };
     auto scalar = get_scalar(scalarlist, i);
@@ -355,8 +409,8 @@ device_map_t<1> separate_tensors_by_device_and_dtype(TensorList tensors, ArrayRe
 device_map_t<2> separate_tensors_by_device_and_dtype(TensorList tensors1, TensorList tensors2) {
   device_map_t<2> grouped_tensors_map;
   for (const auto & i : c10::irange(tensors1.size())) {
-    auto t1 = tensors1[i];
-    auto t2 = tensors2[i];
+    const at::Tensor & t1 = tensors1[i];
+    const at::Tensor & t2 = tensors2[i];
     TORCH_CHECK(t1.device() == t2.device(), "Operand tensors must be on the same device.");
     devicekey_t dev_key = t1.device().str();
     dtypekey_t<2> dtype_key { static_cast<uint8_t>(t1.scalar_type()), static_cast<uint8_t>(t2.scalar_type()) };
