@@ -199,22 +199,6 @@ bool can_use_fast_route(TensorList tensors1, TensorList tensors2, bool does_op_p
   return can_use_fast_route({tensors1, tensors2}, {}, does_op_promote_integer_inputs_to_float);
 #endif
 }
-
-// note(mkozuki): should write a dedicated check_fast_path_restrictions for this?
-bool can_use_fast_route(
-    const std::vector<std::vector<Tensor>>& mta_input_tensors,
-    ArrayRef<Scalar> scalarList = {},
-    bool does_op_promote_integer_inputs_to_float = false) {
-#ifdef __HIP_PLATFORM_HCC_
-  return false;
-#else
-  std::vector<TensorList> tmp;
-  for (const auto & tensorvec : mta_input_tensors) {
-    tmp.emplace_back(TensorList{tensorvec});
-  }
-  return check_fast_path_restrictions(ArrayRef<TensorList>{tmp}, scalarList, does_op_promote_integer_inputs_to_float);
-#endif
-}
 // Tensor Grouping: Separate input Tensors of TensorList(s) by their device&dtype into `vector<vector<Tensor>>`.
 #include <unordered_map>
 #include <string>
@@ -224,7 +208,8 @@ using mta_input_tensors_t = std::vector<tensorvec_t>;
 using scalarvec_t = std::vector<Scalar>;
 using indexvec_t = std::vector<size_t>;
 
-struct MTAInputTensorsAndScalars {
+class MTAInputTensorsAndScalars {
+ public:
   mta_input_tensors_t mta_input_tensors;
   scalarvec_t mta_input_scalars;
   indexvec_t indices;
@@ -272,15 +257,43 @@ struct MTAInputTensorsAndScalars {
     indices.emplace_back(index);
   }
 
-  ArrayRef<Scalar> scalars() const {
-    TORCH_CHECK(mta_input_scalars.size() > 0, "No scalar values stored.");
+  ArrayRef<Scalar> get_scalarList() const {
+    if (mta_input_scalars.size() == 0) {
+      return {};
+    }
     return ArrayRef<Scalar>(mta_input_scalars);
+  }
+
+  ArrayRef<TensorList> get_tensorList() const {
+    std::vector<TensorList> v;
+    v.reserve(mta_input_tensors.size());
+    for (const auto & tensors : mta_input_tensors) {
+      v.emplace_back(tensors);
+    }
+    return ArrayRef<TensorList>(v);
+  }
+
+  bool is_mta_compatible() const {
+    return check_fast_path_restrictions(get_tensorList(), get_scalarList(), false);
+  }
+
+  bool is_mta_compatible(const Scalar & scalar) const {
+    return check_fast_path_restrictions(get_tensorList(), {scalar}, false);
+  }
+
+  bool is_mta_compatible(const bool does_op_promote_integer_inputs_to_float) const {
+    return check_fast_path_restrictions(get_tensorList(), get_scalarList(), does_op_promote_integer_inputs_to_float);
+  }
+
+  bool is_mta_compatible(const Scalar & scalar, const bool does_op_promote_integer_inputs_to_float) const {
+    return check_fast_path_restrictions(get_tensorList(), {scalar}, does_op_promote_integer_inputs_to_float);
   }
 };
 
 using devicekey_t = std::string;
 template<int N_TENSORS> using dtypekey_t = std::array<uint8_t, N_TENSORS>;
 
+// boost::hash_combine like hash functor for `std::array<uint8_t, N_TENSORS>`.
 template<int N_TENSORS>
 struct DtypeHashFunctor {
   size_t operator() (const dtypekey_t<N_TENSORS> dtypes) const {
