@@ -264,13 +264,8 @@ class MTAInputTensorsAndScalars {
     return ArrayRef<Scalar>(mta_input_scalars);
   }
 
-  ArrayRef<TensorList> get_tensorList() const {
-    std::vector<TensorList> v;
-    v.reserve(mta_input_tensors.size());
-    for (const auto & tensors : mta_input_tensors) {
-      v.emplace_back(tensors);
-    }
-    return ArrayRef<TensorList>(v);
+  TensorList get_tensorList(const size_t i) {
+    return TensorList(mta_input_tensors[i]);
   }
 
   bool is_mta_compatible() const {
@@ -287,6 +282,16 @@ class MTAInputTensorsAndScalars {
 
   bool is_mta_compatible(const Scalar & scalar, const bool does_op_promote_integer_inputs_to_float) const {
     return check_fast_path_restrictions(get_tensorList(), {scalar}, does_op_promote_integer_inputs_to_float);
+  }
+
+ private:
+  ArrayRef<TensorList> get_tensorList() const {
+    std::vector<TensorList> v;
+    v.reserve(mta_input_tensors.size());
+    for (const auto & tensors : mta_input_tensors) {
+      v.emplace_back(tensors);
+    }
+    return ArrayRef<TensorList>(v);
   }
 };
 
