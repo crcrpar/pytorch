@@ -178,44 +178,127 @@ std::vector<Tensor> foreach_pointwise_op(std::vector<std::vector<at::Tensor>>& m
 #define FOREACH_POINTWISE_OP_SCALAR(NAME, OP)                                                                                         \
 std::vector<Tensor> foreach_tensor_##NAME##_scalar_cuda(TensorList input, TensorList tensors1, TensorList tensors2, const Scalar& scalar) {  \
     check_foreach_api_restrictions(input, tensors1, tensors2);                                                                        \
-                                                                                                                                      \
-    if (!can_use_fast_route({input, tensors1, tensors2}, scalar) || has_integral_tensor(input, /* includeBool */ true)) {             \
-        return at::native::foreach_tensor_##NAME##_scalar_slow(input, tensors1, tensors2, scalar);                                    \
+    if (can_use_fast_route({input, tensors1, tensors2}, scalar) && !has_integral_tensor(input, /* includeBool */ true)) {             \
+        return foreach_pointwise_op<OP>(input, tensors1, tensors2, scalar);                                                           \
     }                                                                                                                                 \
+    std::vector<Tensor> result;                                                                                                       \
+    result.reserve(input.size());                                                                                                     \
+    std::vector<size_t> index_map(input.size(), 0);                                                                                   \
                                                                                                                                       \
-    return foreach_pointwise_op<OP>(input, tensors1, tensors2, scalar);                                                               \
+    size_t cur_index = 0;                                                                                                             \
+    OptionalDeviceGuard g;                                                                                                            \
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2)) {                               \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                         \
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                    \
+            auto & mtainput = dtype_mtainputs.second;                                                                                 \
+            if (!mtainput.is_mta_compatible(scalar) || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {     \
+                for (const auto & t : at::native::foreach_tensor_##NAME##_scalar_slow(                                                \
+                        mtainput.get_tensorList(0), mtainput.get_tensorList(1), mtainput.get_tensorList(2), scalar)) {                \
+                    result.emplace_back(std::move(t));                                                                                \
+                }                                                                                                                     \
+            } else {                                                                                                                  \
+                for (const auto & t : foreach_pointwise_op<OP>(mtainput.mta_input_tensors, scalar)) {                                 \
+                    result.emplace_back(std::move(t));                                                                                \
+                }                                                                                                                     \
+            }                                                                                                                         \
+            const auto & indices = mtainput.indices;                                                                                  \
+            for (const auto & i : c10::irange(indices.size())) {                                                                      \
+                index_map[indices[i]] = cur_index + i;                                                                                \
+            }                                                                                                                         \
+            cur_index += indices.size();                                                                                              \
+        }                                                                                                                             \
+    }                                                                                                                                 \
+    std::vector<Tensor> sorted_result;                                                                                                \
+    sorted_result.reserve(input.size());                                                                                              \
+    for (const auto & i : index_map) {                                                                                                \
+        sorted_result.emplace_back(result[i]);                                                                                        \
+    }                                                                                                                                 \
+    return sorted_result;                                                                                                             \
 }                                                                                                                                     \
                                                                                                                                       \
 void foreach_tensor_##NAME##_scalar_cuda_(TensorList input, TensorList tensors1, TensorList tensors2, const Scalar& scalar) {                \
     check_foreach_api_restrictions(input, tensors1, tensors2);                                                                        \
                                                                                                                                       \
-    if (!can_use_fast_route({input, tensors1, tensors2}, scalar) || has_integral_tensor(input, /* includeBool */ true)) {             \
-        return at::native::foreach_tensor_##NAME##_scalar_slow_(input, tensors1, tensors2, scalar);                                   \
+    if (can_use_fast_route({input, tensors1, tensors2}, scalar) && !has_integral_tensor(input, /* includeBool */ true)) {             \
+        return foreach_pointwise_op_<OP>(input, tensors1, tensors2, scalar);                                                          \
     }                                                                                                                                 \
-                                                                                                                                      \
-    foreach_pointwise_op_<OP>(input, tensors1, tensors2, scalar);                                                                     \
+    OptionalDeviceGuard g;                                                                                                            \
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2)) {                               \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                         \
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                    \
+            auto & mtainput = dtype_mtainputs.second;                                                                                 \
+            if (!mtainput.is_mta_compatible(scalar) || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {     \
+                at::native::foreach_tensor_##NAME##_scalar_slow_(                                                                     \
+                    mtainput.get_tensorList(0), mtainput.get_tensorList(1), mtainput.get_tensorList(2), scalar);                      \
+            } else {                                                                                                                  \
+                foreach_pointwise_op_<OP>(mtainput.mta_input_tensors, scalar);                                                        \
+            }                                                                                                                         \
+        }                                                                                                                             \
+    }                                                                                                                                 \
 }
 
 
 #define FOREACH_POINTWISE_OP_SCALARLIST(NAME, OP)                                                                                                        \
 std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_cuda(TensorList input, TensorList tensors1, TensorList tensors2, at::ArrayRef<Scalar> scalars) {  \
     check_foreach_api_restrictions(input, tensors1, tensors2, scalars);                                                                                  \
-                                                                                                                                                         \
-    if (!can_use_fast_route({input, tensors1, tensors2}, scalars) || has_integral_tensor(input, /* includeBool */ true)) {                               \
-        return at::native::foreach_tensor_##NAME##_scalarlist_slow(input, tensors1, tensors2, scalars);                                                  \
+    if (can_use_fast_route({input, tensors1, tensors2}, scalars) && !has_integral_tensor(input, /* includeBool */ true)) {                               \
+        return foreach_pointwise_op<OP>(input, tensors1, tensors2, scalars);                                                                             \
     }                                                                                                                                                    \
                                                                                                                                                          \
-    return foreach_pointwise_op<OP>(input, tensors1, tensors2, scalars);                                                                                 \
+    std::vector<Tensor> result;                                                                                                                          \
+    result.reserve(input.size());                                                                                                                        \
+    std::vector<size_t> index_map(input.size(), 0);                                                                                                      \
+                                                                                                                                                         \
+    size_t cur_index = 0;                                                                                                                                \
+    OptionalDeviceGuard g;                                                                                                                               \
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2, scalars)) {                                         \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                                            \
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                                       \
+            auto & mtainput = dtype_mtainputs.second;                                                                                                    \
+            if (!mtainput.is_mta_compatible() || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {                              \
+                for (const auto & t : at::native::foreach_tensor_##NAME##_scalarlist_slow(                                                               \
+                        mtainput.get_tensorList(0), mtainput.get_tensorList(1), mtainput.get_tensorList(2), mtainput.get_scalarList())) {                \
+                    result.emplace_back(std::move(t));                                                                                                   \
+                }                                                                                                                                        \
+            } else {                                                                                                                                     \
+                for (const auto & t : foreach_pointwise_op<OP>(mtainput.mta_input_tensors, mtainput.get_scalarList())) {                                 \
+                    result.emplace_back(std::move(t));                                                                                                   \
+                }                                                                                                                                        \
+            }                                                                                                                                            \
+            const auto & indices = mtainput.indices;                                                                                                     \
+            for (const auto & i : c10::irange(indices.size())) {                                                                                         \
+                index_map[indices[i]] = cur_index + i;                                                                                                   \
+            }                                                                                                                                            \
+            cur_index += indices.size();                                                                                                                 \
+        }                                                                                                                                                \
+    }                                                                                                                                                    \
+    std::vector<Tensor> sorted_result;                                                                                                                   \
+    sorted_result.reserve(input.size());                                                                                                                 \
+    for (const auto & i : index_map) {                                                                                                                   \
+        sorted_result.emplace_back(result[i]);                                                                                                           \
+    }                                                                                                                                                    \
+    return sorted_result;                                                                                                                                \
 }                                                                                                                                                        \
                                                                                                                                                          \
 void foreach_tensor_##NAME##_scalarlist_cuda_(TensorList input, TensorList tensors1, TensorList tensors2, at::ArrayRef<Scalar> scalars) {                \
     check_foreach_api_restrictions(input, tensors1, tensors2, scalars);                                                                                  \
-                                                                                                                                                         \
-    if (!can_use_fast_route({input, tensors1, tensors2}, scalars) || has_integral_tensor(input, /* includeBool */ true)) {                               \
-        return at::native::foreach_tensor_##NAME##_scalarlist_slow_(input, tensors1, tensors2, scalars);                                                 \
+    if (can_use_fast_route({input, tensors1, tensors2}, scalars) && !has_integral_tensor(input, /* includeBool */ true)) {                               \
+        return foreach_pointwise_op_<OP>(input, tensors1, tensors2, scalars);                                                                            \
     }                                                                                                                                                    \
                                                                                                                                                          \
-    foreach_pointwise_op_<OP>(input, tensors1, tensors2, scalars);                                                                                       \
+    OptionalDeviceGuard g;                                                                                                                               \
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2, scalars)) {                                         \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                                            \
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                                       \
+            auto & mtainput = dtype_mtainputs.second;                                                                                                    \
+            if (!mtainput.is_mta_compatible() || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {                              \
+                at::native::foreach_tensor_##NAME##_scalarlist_slow_(                                                                                    \
+                    mtainput.get_tensorList(0), mtainput.get_tensorList(1), mtainput.get_tensorList(2), mtainput.get_scalarList());                      \
+            } else {                                                                                                                                     \
+                foreach_pointwise_op_<OP>(mtainput.mta_input_tensors, mtainput.get_scalarList());                                                        \
+            }                                                                                                                                            \
+        }                                                                                                                                                \
+    }                                                                                                                                                    \
 }
 
 FOREACH_POINTWISE_OP_SCALAR(addcmul, std::multiplies);
