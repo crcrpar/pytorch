@@ -112,6 +112,8 @@ bool will_promote_tensor(const Tensor& tensor, const Scalar& scalar, bool does_o
   return tensor.scalar_type() != at::native::result_type(scalar, tensor);
 }
 
+#include <iostream>
+#include <typeinfo>
 // TODO(mkozuki): Remove device-dtype check once tensor grouping is completed.
 // Please, make sure to call check_foreach_api_restrictions before calling this method.
 // There is a set of preconditions that have to be satisfied.
@@ -121,9 +123,6 @@ bool check_fast_path_restrictions(
   bool does_op_promote_integer_inputs_to_float = false) {
     const auto expected_dtype = tensorLists[0][0].dtype();
     const auto expected_device = tensorLists[0][0].device();
-    if (!expected_device.is_cuda()) {
-      return false;
-    }
 
     auto is_tensor_okay = [&](const Tensor& tensor) {
       return tensor.dtype() == expected_dtype &&
@@ -226,20 +225,20 @@ class MTAInputTensorsAndScalars {
   }
 
   // Binary with 2 TensorLists
-  MTAInputTensorsAndScalars(Tensor & t1, Tensor & t2, const size_t index)
+  MTAInputTensorsAndScalars(const Tensor & t1, const Tensor & t2, const size_t index)
     : mta_input_tensors{ tensorvec_t{t1}, tensorvec_t{t2} }, mta_input_scalars{}, indices{index} {}
 
-  void append(Tensor & t1, Tensor & t2, const size_t index) {
+  void append(const Tensor & t1, const Tensor & t2, const size_t index) {
     mta_input_tensors[0].emplace_back(t1);
     mta_input_tensors[1].emplace_back(t2);
     indices.emplace_back(index);
   }
 
   // Binary with TensorList and ArrayRef<Scalar>
-  MTAInputTensorsAndScalars(const Tensor & t, Scalar & scalar, const size_t index)
+  MTAInputTensorsAndScalars(const Tensor & t, const Scalar & scalar, const size_t index)
     : mta_input_tensors{ tensorvec_t{t} }, mta_input_scalars{ scalar }, indices{index} {}
 
-  void append(const Tensor & t, Scalar & scalar, const size_t index) {
+  void append(const Tensor & t, const Scalar & scalar, const size_t index) {
     mta_input_tensors[0].emplace_back(t);
     mta_input_scalars.emplace_back(scalar);
     indices.emplace_back(index);
@@ -279,29 +278,62 @@ class MTAInputTensorsAndScalars {
   }
 
   bool is_mta_compatible() const {
-    return check_fast_path_restrictions(get_tensorList(), get_scalarList(), false);
+    return _is_mta_compatible({}, false);
   }
 
   bool is_mta_compatible(const Scalar & scalar) const {
-    return check_fast_path_restrictions(get_tensorList(), {scalar}, false);
+    return _is_mta_compatible({scalar}, false);
   }
 
   bool is_mta_compatible(const bool does_op_promote_integer_inputs_to_float) const {
-    return check_fast_path_restrictions(get_tensorList(), get_scalarList(), does_op_promote_integer_inputs_to_float);
+    return _is_mta_compatible(get_scalarList(), does_op_promote_integer_inputs_to_float);
   }
 
   bool is_mta_compatible(const Scalar & scalar, const bool does_op_promote_integer_inputs_to_float) const {
-    return check_fast_path_restrictions(get_tensorList(), {scalar}, does_op_promote_integer_inputs_to_float);
+    return _is_mta_compatible({scalar}, does_op_promote_integer_inputs_to_float);
   }
 
  private:
-  ArrayRef<TensorList> get_tensorList() const {
-    std::vector<TensorList> v;
-    v.reserve(mta_input_tensors.size());
+  bool _is_mta_compatible(ArrayRef<Scalar> scalarList, const bool does_op_promote_integer_inputs_to_float) const {
+    const auto & expected_dtype = mta_input_tensors[0][0].dtype();
+    const auto & expected_device = mta_input_tensors[0][0].device();
+
+    auto is_tensor_okay = [&](const Tensor& t) {
+      return t.dtype() == expected_dtype &&
+             t.device() == expected_device &&
+             t.layout() == at::kStrided &&
+             t.is_non_overlapping_and_dense();
+    };
+
     for (const auto & tensors : mta_input_tensors) {
-      v.emplace_back(tensors);
+      for (const auto & t : tensors) {
+        if (!is_tensor_okay(t)) {
+          return false;
+        }
+      }
     }
-    return ArrayRef<TensorList>(v);
+
+    for (const auto & i : c10::irange(mta_input_tensors[0].size())) {
+      if (does_op_promote_integer_inputs_to_float) {
+        if (at::isIntegralType(mta_input_tensors[0][i].scalar_type(), /* includeBool */ true)) {
+          return false;
+        }
+      }
+
+      if (scalarList.size() == 1) {
+        if (will_promote_tensor(mta_input_tensors[0][i], scalarList[0])) {
+          return false;
+        }
+      } else if (scalarList.size() > 1) {
+        if (scalarList[i].isComplex()) {
+          return false;
+        }
+        if (will_promote_tensor(mta_input_tensors[0][i], scalarList[i])) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 };
 

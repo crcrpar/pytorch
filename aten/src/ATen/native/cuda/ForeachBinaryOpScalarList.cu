@@ -93,19 +93,21 @@ void foreach_binary_op_(std::vector<std::vector<Tensor>>& mta_input_tensors, at:
 #define FOREACH_BINARY_OP_SCALARLIST(NAME, OP, DIV_OP)                                                                   \
 void foreach_tensor_##NAME##_scalarlist_kernel_cuda_(TensorList tensors, at::ArrayRef<Scalar> scalars) {                 \
     check_foreach_api_restrictions(tensors, scalars);                                                                    \
+    OptionalDeviceGuard g;                                                                                               \
     if (can_use_fast_route(tensors, scalars, DIV_OP)) {                                                                  \
+        g.reset_device(tensors[0].device());                                                                             \
         return foreach_binary_op_<OP>(tensors, scalars);                                                                 \
     }                                                                                                                    \
-    OptionalDeviceGuard g;                                                                                               \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {                           \
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                                         \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                            \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                       \
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                                         \
-            if (!dtype_mtainputs.second.is_mta_compatible(DIV_OP)) {                                                     \
+            auto & mtainput = dtype_mtainputs.second;                                                                    \
+            if (is_cpu || !mtainput.is_mta_compatible(DIV_OP)) {                                                         \
                 at::native::foreach_tensor_##NAME##_scalarlist_kernel_slow_(                                             \
-                        TensorList(mta_input_tensors[0]), dtype_mtainputs.second.get_scalarList());                      \
+                        mtainput.get_tensorList(0), mtainput.get_scalarList());                                          \
             } else {                                                                                                     \
-                foreach_binary_op_<OP>(mta_input_tensors, dtype_mtainputs.second.get_scalarList());                      \
+                foreach_binary_op_<OP>(mtainput.mta_input_tensors, mtainput.get_scalarList());                           \
             }                                                                                                            \
         }                                                                                                                \
     }                                                                                                                    \
@@ -113,7 +115,9 @@ void foreach_tensor_##NAME##_scalarlist_kernel_cuda_(TensorList tensors, at::Arr
                                                                                                                          \
 std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_kernel_cuda(TensorList tensors, at::ArrayRef<Scalar> scalars) {   \
     check_foreach_api_restrictions(tensors, scalars);                                                                    \
+    OptionalDeviceGuard g;                                                                                               \
     if (can_use_fast_route(tensors, scalars, DIV_OP)) {                                                                  \
+        g.reset_device(tensors[0].device());                                                                             \
         return foreach_binary_op<OP>(tensors, scalars);                                                                  \
     }                                                                                                                    \
     std::vector<Tensor> result;                                                                                          \
@@ -121,23 +125,23 @@ std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_kernel_cuda(TensorList te
     std::vector<size_t> index_map(tensors.size(), 0);                                                                    \
                                                                                                                          \
     size_t cur_index = 0;                                                                                                \
-    OptionalDeviceGuard g;                                                                                               \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {                           \
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                                         \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                            \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                       \
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                                         \
-            if (!dtype_mtainputs.second.is_mta_compatible(DIV_OP)) {                                                     \
+            auto & mtainput = dtype_mtainputs.second;                                                                    \
+            if (is_cpu || !mtainput.is_mta_compatible(DIV_OP)) {                                                         \
                 for (const auto & t : at::native::foreach_tensor_##NAME##_scalarlist_kernel_slow(                        \
-                        TensorList(mta_input_tensors[0]), dtype_mtainputs.second.get_scalarList())) {                    \
+                        mtainput.get_tensorList(0), mtainput.get_scalarList())) {                                        \
                     result.emplace_back(std::move(t));                                                                   \
                 }                                                                                                        \
             } else {                                                                                                     \
                 for (const auto & t : foreach_binary_op<OP>(                                                             \
-                        mta_input_tensors, dtype_mtainputs.second.get_scalarList())) {                                   \
+                        mtainput.mta_input_tensors, mtainput.get_scalarList())) {                                        \
                     result.emplace_back(std::move(t));                                                                   \
                 }                                                                                                        \
             }                                                                                                            \
-            const auto & indices = dtype_mtainputs.second.indices;                                                       \
+            const auto & indices = mtainput.indices;                                                                     \
             for (const auto & i : c10::irange(indices.size())) {                                                         \
                 index_map[indices[i]] = cur_index + i;                                                                   \
             }                                                                                                            \
@@ -163,18 +167,20 @@ void foreach_tensor_sub_scalarlist_kernel_cuda_(TensorList tensors, at::ArrayRef
     for (const auto & i : c10::irange(tensors.size())) {
         sub_check(tensors[i], scalars[i]);
     }
+    OptionalDeviceGuard g;
     if (can_use_fast_route({tensors}, scalars)) {
+        g.reset_device(tensors[0].device());
         return foreach_binary_op_<std::minus>(tensors, scalars);
     }
-    OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
-            if (!dtype_mtainputs.second.is_mta_compatible()) {
-                at::native::foreach_tensor_sub_scalarlist_kernel_slow_(TensorList{mta_input_tensors[0]}, dtype_mtainputs.second.get_scalarList());
+            auto & mtainput = dtype_mtainputs.second;
+            if (is_cpu || !mtainput.is_mta_compatible()) {
+                at::native::foreach_tensor_sub_scalarlist_kernel_slow_(mtainput.get_tensorList(0), mtainput.get_scalarList());
             } else {
-                foreach_binary_op_<std::minus>(mta_input_tensors, dtype_mtainputs.second.get_scalarList());
+                foreach_binary_op_<std::minus>(mtainput.mta_input_tensors, mtainput.get_scalarList());
             }
         }
     }
@@ -185,7 +191,9 @@ std::vector<Tensor> foreach_tensor_sub_scalarlist_kernel_cuda(TensorList tensors
     for (const auto & i : c10::irange(tensors.size())) {
         sub_check(tensors[i], scalars[i]);
     }
+    OptionalDeviceGuard g;
     if (can_use_fast_route({tensors}, scalars)) {
+        g.reset_device(tensors[0].device());
         return foreach_binary_op<std::minus>(tensors, scalars);
     }
 
@@ -194,22 +202,22 @@ std::vector<Tensor> foreach_tensor_sub_scalarlist_kernel_cuda(TensorList tensors
     std::vector<size_t> index_map(tensors.size(), 0);
 
     size_t cur_index = 0;
-    OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors, scalars)) {
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
-            if(!dtype_mtainputs.second.is_mta_compatible()) {
+            auto & mtainput = dtype_mtainputs.second;
+            if(is_cpu || !mtainput.is_mta_compatible()) {
                 for (const auto & t : at::native::foreach_tensor_sub_scalarlist_kernel_slow(
-                        TensorList(mta_input_tensors[0]), dtype_mtainputs.second.get_scalarList())) {
+                        mtainput.get_tensorList(0), mtainput.get_scalarList())) {
                     result.emplace_back(std::move(t));
                 }
             } else {
-                for (const auto & t : foreach_binary_op<std::minus>(mta_input_tensors, dtype_mtainputs.second.get_scalarList())) {
+                for (const auto & t : foreach_binary_op<std::minus>(mtainput.mta_input_tensors, mtainput.get_scalarList())) {
                     result.emplace_back(std::move(t));
                 }
             }
-            const auto & indices = dtype_mtainputs.second.indices;
+            const auto & indices = mtainput.indices;
             for (const auto & i : c10::irange(indices.size())) {
                 index_map[indices[i]] = cur_index + i;
             }

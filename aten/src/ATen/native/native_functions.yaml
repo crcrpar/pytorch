@@ -7144,6 +7144,7 @@
     QuantizedCPU: cat_out_quantized_cpu
 
 - func: _foreach_add.Scalar(Tensor[] tensors, Scalar scalar) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7151,6 +7152,7 @@
     CUDA: foreach_tensor_add_scalar_kernel_cuda
 
 - func: _foreach_add_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7158,6 +7160,7 @@
     CUDA: foreach_tensor_add_scalar_kernel_cuda_
 
 - func: _foreach_sub.Scalar(Tensor[] tensors, Scalar scalar) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7165,6 +7168,7 @@
     CUDA: foreach_tensor_sub_scalar_kernel_cuda
 
 - func: _foreach_sub_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7172,6 +7176,7 @@
     CUDA: foreach_tensor_sub_scalar_kernel_cuda_
 
 - func: _foreach_mul.Scalar(Tensor[] tensors, Scalar scalar) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7179,6 +7184,7 @@
     CUDA: foreach_tensor_mul_scalar_kernel_cuda
 
 - func: _foreach_mul_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7186,6 +7192,7 @@
     CUDA: foreach_tensor_mul_scalar_kernel_cuda_
 
 - func: _foreach_div.Scalar(Tensor[] tensors, Scalar scalar) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7193,6 +7200,7 @@
     CUDA: foreach_tensor_div_scalar_kernel_cuda
 
 - func: _foreach_div_.Scalar(Tensor(a!)[] self, Scalar scalar) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7200,6 +7208,7 @@
     CUDA: foreach_tensor_div_scalar_kernel_cuda_
 
 - func: _foreach_add.List(Tensor[] tensors1, Tensor[] tensors2, *, Scalar alpha=1) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7207,6 +7216,7 @@
     CUDA: foreach_tensor_add_list_kernel_cuda
 
 - func: _foreach_add_.List(Tensor(a!)[] self, Tensor[] other, *, Scalar alpha=1) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7214,6 +7224,7 @@
     CUDA: foreach_tensor_add_list_kernel_cuda_
 
 - func: _foreach_sub.List(Tensor[] tensors1, Tensor[] tensors2, *, Scalar alpha=1) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7221,6 +7232,7 @@
     CUDA: foreach_tensor_sub_list_kernel_cuda
 
 - func: _foreach_sub_.List(Tensor(a!)[] self, Tensor[] other, *, Scalar alpha=1) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7228,6 +7240,7 @@
     CUDA: foreach_tensor_sub_list_kernel_cuda_
 
 - func: _foreach_mul.List(Tensor[] tensors1, Tensor[] tensors2) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7235,6 +7248,7 @@
     CUDA: foreach_tensor_mul_list_kernel_cuda
 
 - func: _foreach_mul_.List(Tensor(a!)[] self, Tensor[] other) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7242,6 +7256,7 @@
     CUDA: foreach_tensor_mul_list_kernel_cuda_
 
 - func: _foreach_div.List(Tensor[] tensors1, Tensor[] tensors2) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7249,6 +7264,7 @@
     CUDA: foreach_tensor_div_list_kernel_cuda
 
 - func: _foreach_div_.List(Tensor(a!)[] self, Tensor[] other) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7256,6 +7272,7 @@
     CUDA: foreach_tensor_div_list_kernel_cuda_
 
 - func: _foreach_add.ScalarList(Tensor[] tensors, Scalar[] scalars) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7263,6 +7280,7 @@
     CUDA: foreach_tensor_add_scalarlist_kernel_cuda
 
 - func: _foreach_add_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7270,6 +7288,7 @@
     CUDA: foreach_tensor_add_scalarlist_kernel_cuda_
 
 - func: _foreach_sub.ScalarList(Tensor[] tensors, Scalar[] scalars) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7277,6 +7296,7 @@
     CUDA: foreach_tensor_sub_scalarlist_kernel_cuda
 
 - func: _foreach_sub_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7284,6 +7304,7 @@
     CUDA: foreach_tensor_sub_scalarlist_kernel_cuda_
 
 - func: _foreach_div.ScalarList(Tensor[] tensors, Scalar[] scalars) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7291,6 +7312,7 @@
     CUDA: foreach_tensor_div_scalarlist_kernel_cuda
 
 - func: _foreach_div_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7298,6 +7320,7 @@
     CUDA: foreach_tensor_div_scalarlist_kernel_cuda_
 
 - func: _foreach_mul.ScalarList(Tensor[] tensors, Scalar[] scalars) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7305,6 +7328,7 @@
     CUDA: foreach_tensor_mul_scalarlist_kernel_cuda
 
 - func: _foreach_mul_.ScalarList(Tensor(a!)[] self, Scalar[] scalars) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7312,6 +7336,7 @@
     CUDA: foreach_tensor_mul_scalarlist_kernel_cuda_
 
 - func: _foreach_exp(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7319,6 +7344,7 @@
     CUDA: foreach_tensor_exp_cuda
 
 - func: _foreach_zero_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7326,6 +7352,7 @@
     CUDA: foreach_tensor_zero_cuda_
 
 - func: _foreach_exp_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7333,6 +7360,7 @@
     CUDA: foreach_tensor_exp_cuda_
 
 - func: _foreach_sqrt(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7340,6 +7368,7 @@
     CUDA: foreach_tensor_sqrt_cuda
 
 - func: _foreach_sqrt_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7347,6 +7376,7 @@
     CUDA: foreach_tensor_sqrt_cuda_
 
 - func: _foreach_abs(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7354,6 +7384,7 @@
     CUDA: foreach_tensor_abs_cuda
 
 - func: _foreach_abs_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7361,6 +7392,7 @@
     CUDA: foreach_tensor_abs_cuda_
 
 - func: _foreach_acos(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7368,6 +7400,7 @@
     CUDA: foreach_tensor_acos_cuda
 
 - func: _foreach_acos_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7375,6 +7408,7 @@
     CUDA: foreach_tensor_acos_cuda_
 
 - func: _foreach_asin(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7382,6 +7416,7 @@
     CUDA: foreach_tensor_asin_cuda
 
 - func: _foreach_asin_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7389,6 +7424,7 @@
     CUDA: foreach_tensor_asin_cuda_
 
 - func: _foreach_atan(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7396,6 +7432,7 @@
     CUDA: foreach_tensor_atan_cuda
 
 - func: _foreach_atan_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7403,6 +7440,7 @@
     CUDA: foreach_tensor_atan_cuda_
 
 - func: _foreach_ceil(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7410,6 +7448,7 @@
     CUDA: foreach_tensor_ceil_cuda
 
 - func: _foreach_ceil_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7417,6 +7456,7 @@
     CUDA: foreach_tensor_ceil_cuda_
 
 - func: _foreach_cos(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7424,6 +7464,7 @@
     CUDA: foreach_tensor_cos_cuda
 
 - func: _foreach_cos_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7431,6 +7472,7 @@
     CUDA: foreach_tensor_cos_cuda_
 
 - func: _foreach_cosh(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7438,6 +7480,7 @@
     CUDA: foreach_tensor_cosh_cuda
 
 - func: _foreach_cosh_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7445,6 +7488,7 @@
     CUDA: foreach_tensor_cosh_cuda_
 
 - func: _foreach_erf(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7452,6 +7496,7 @@
     CUDA: foreach_tensor_erf_cuda
 
 - func: _foreach_erf_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7459,6 +7504,7 @@
     CUDA: foreach_tensor_erf_cuda_
 
 - func: _foreach_erfc(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7466,6 +7512,7 @@
     CUDA: foreach_tensor_erfc_cuda
 
 - func: _foreach_erfc_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7473,6 +7520,7 @@
     CUDA: foreach_tensor_erfc_cuda_
 
 - func: _foreach_expm1(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7480,6 +7528,7 @@
     CUDA: foreach_tensor_expm1_cuda
 
 - func: _foreach_expm1_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7487,6 +7536,7 @@
     CUDA: foreach_tensor_expm1_cuda_
 
 - func: _foreach_floor(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7494,6 +7544,7 @@
     CUDA: foreach_tensor_floor_cuda
 
 - func: _foreach_floor_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7501,6 +7552,7 @@
     CUDA: foreach_tensor_floor_cuda_
 
 - func: _foreach_log(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7508,6 +7560,7 @@
     CUDA: foreach_tensor_log_cuda
 
 - func: _foreach_log_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7515,6 +7568,7 @@
     CUDA: foreach_tensor_log_cuda_
 
 - func: _foreach_log10(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7522,6 +7576,7 @@
     CUDA: foreach_tensor_log10_cuda
 
 - func: _foreach_log10_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7529,6 +7584,7 @@
     CUDA: foreach_tensor_log10_cuda_
 
 - func: _foreach_log1p(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7536,6 +7592,7 @@
     CUDA: foreach_tensor_log1p_cuda
 
 - func: _foreach_log1p_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7543,6 +7600,7 @@
     CUDA: foreach_tensor_log1p_cuda_
 
 - func: _foreach_log2(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7550,6 +7608,7 @@
     CUDA: foreach_tensor_log2_cuda
 
 - func: _foreach_log2_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7557,6 +7616,7 @@
     CUDA: foreach_tensor_log2_cuda_
 
 - func: _foreach_neg(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7564,6 +7624,7 @@
     CUDA: foreach_tensor_neg_cuda
 
 - func: _foreach_neg_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7571,6 +7632,7 @@
     CUDA: foreach_tensor_neg_cuda_
 
 - func: _foreach_tan(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7578,6 +7640,7 @@
     CUDA: foreach_tensor_tan_cuda
 
 - func: _foreach_tan_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7585,6 +7648,7 @@
     CUDA: foreach_tensor_tan_cuda_
 
 - func: _foreach_tanh(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7592,6 +7656,7 @@
     CUDA: foreach_tensor_tanh_cuda
 
 - func: _foreach_tanh_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7599,6 +7664,7 @@
     CUDA: foreach_tensor_tanh_cuda_
 
 - func: _foreach_sin(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7606,6 +7672,7 @@
     CUDA: foreach_tensor_sin_cuda
 
 - func: _foreach_sin_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7613,6 +7680,7 @@
     CUDA: foreach_tensor_sin_cuda_
 
 - func: _foreach_sinh(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7620,6 +7688,7 @@
     CUDA: foreach_tensor_sinh_cuda
 
 - func: _foreach_sinh_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7627,6 +7696,7 @@
     CUDA: foreach_tensor_sinh_cuda_
 
 - func: _foreach_round(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7634,6 +7704,7 @@
     CUDA: foreach_tensor_round_cuda
 
 - func: _foreach_round_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7641,6 +7712,7 @@
     CUDA: foreach_tensor_round_cuda_
 
 - func: _foreach_lgamma(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7648,6 +7720,7 @@
     CUDA: foreach_tensor_lgamma_cuda
 
 - func: _foreach_lgamma_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7655,6 +7728,7 @@
     CUDA: foreach_tensor_lgamma_cuda_
 
 - func: _foreach_frac(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7662,6 +7736,7 @@
     CUDA: foreach_tensor_frac_cuda
 
 - func: _foreach_frac_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7669,6 +7744,7 @@
     CUDA: foreach_tensor_frac_cuda_
 
 - func: _foreach_reciprocal(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7676,6 +7752,7 @@
     CUDA: foreach_tensor_reciprocal_cuda
 
 - func: _foreach_reciprocal_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7683,6 +7760,7 @@
     CUDA: foreach_tensor_reciprocal_cuda_
 
 - func: _foreach_sigmoid(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7690,6 +7768,7 @@
     CUDA: foreach_tensor_sigmoid_cuda
 
 - func: _foreach_sigmoid_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7697,6 +7776,7 @@
     CUDA: foreach_tensor_sigmoid_cuda_
 
 - func: _foreach_trunc(Tensor[] tensors) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7704,6 +7784,7 @@
     CUDA: foreach_tensor_trunc_cuda
 
 - func: _foreach_trunc_(Tensor(a!)[] self) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7711,6 +7792,7 @@
     CUDA: foreach_tensor_trunc_cuda_
 
 - func: _foreach_addcdiv_.Scalar(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7718,6 +7800,7 @@
     CUDA: foreach_tensor_addcdiv_scalar_cuda_
 
 - func: _foreach_addcmul_.Scalar(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7725,6 +7808,7 @@
     CUDA: foreach_tensor_addcmul_scalar_cuda_
 
 - func: _foreach_addcdiv_.ScalarList(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7732,6 +7816,7 @@
     CUDA: foreach_tensor_addcdiv_scalarlist_cuda_
 
 - func: _foreach_addcmul_.ScalarList(Tensor(a!)[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> ()
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7739,6 +7824,7 @@
     CUDA: foreach_tensor_addcmul_scalarlist_cuda_
 
 - func: _foreach_addcdiv.Scalar(Tensor[] input, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7746,6 +7832,7 @@
     CUDA: foreach_tensor_addcdiv_scalar_cuda
 
 - func: _foreach_addcmul.Scalar(Tensor[] input, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7753,6 +7840,7 @@
     CUDA: foreach_tensor_addcmul_scalar_cuda
 
 - func: _foreach_addcdiv.ScalarList(Tensor[] input, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7760,6 +7848,7 @@
     CUDA: foreach_tensor_addcdiv_scalarlist_cuda
 
 - func: _foreach_addcmul.ScalarList(Tensor[] input, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7767,6 +7856,7 @@
     CUDA: foreach_tensor_addcmul_scalarlist_cuda
 
 - func: _foreach_maximum.List(Tensor[] tensors1, Tensor[] tensors2) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:
@@ -7774,6 +7864,7 @@
     CUDA: foreach_tensor_maximum_cuda
 
 - func: _foreach_minimum.List(Tensor[] tensors1, Tensor[] tensors2) -> Tensor[]
+  device_guard: False
   device_check: NoCheck   # foreach kernels fall back to slow path when tensor are on different devices
   variants: function
   dispatch:

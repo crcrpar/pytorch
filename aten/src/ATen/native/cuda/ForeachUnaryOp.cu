@@ -255,13 +255,16 @@ struct functor_name {                                                \
     __device__ T operator()(T t) const { return std::op_name(t); }   \
 };                                                                   \
 
+#include <iostream>
 // TODO(mkozuki): DRY the sorting of output tensors
 // TODO(mkozuki): Make sorting inplace?
 // given a functor and a "dispatch function", creates the outplace and inplace operations
 #define OP_CUSTOM_FUNCTOR(function, op_name, functor_name)                \
 std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
     check_foreach_api_restrictions(tensors);                              \
+    OptionalDeviceGuard g;                                                \
     if (can_use_fast_route(tensors) && !has_integral_tensor(tensors, /* includeBool */ true)) {  \
+        g.reset_device(tensors[0].device());                              \
         return function<functor_name>(tensors);                           \
     }                                                                     \
                                                                           \
@@ -270,21 +273,24 @@ std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
     std::vector<size_t> index_map(tensors.size(), 0);                     \
                                                                           \
     size_t cur_index = 0;                                                 \
-    OptionalDeviceGuard g;                                                \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {                                          \
+        std::cout << "Device: " << dev_dtypemtainputs.first << '\n';                                                           \
+        const bool is_cpu = dev_dtypemtainputs.first == "cpu";                                                                 \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                  \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                             \
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                                               \
-            if (!dtype_mtainputs.second.is_mta_compatible() || has_integral_tensor(mta_input_tensors[0], /* includeBool */ true)) { \
-                for (const auto & t : at::native::foreach_tensor_##op_name##_slow(TensorList{mta_input_tensors[0]})) {         \
+            auto & mtainput = dtype_mtainputs.second;                                                                          \
+            if (is_cpu || !mtainput.is_mta_compatible() || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) { \
+                std::cout << "Slowpath\n";                                                                                     \
+                for (const auto & t : at::native::foreach_tensor_##op_name##_slow(mtainput.get_tensorList(0))) {               \
                     result.emplace_back(std::move(t));                                                                         \
                 }                                                                                                              \
             } else {                                                                                                           \
-                for (const auto & t : function<functor_name>(mta_input_tensors)) {                                             \
+                std::cout << "Fastpath\n";                                                                                     \
+                for (const auto & t : function<functor_name>(mtainput.mta_input_tensors)) {                                    \
                     result.emplace_back(std::move(t));                                                                         \
                 }                                                                                                              \
             }                                                                                                                  \
-            const auto & indices = dtype_mtainputs.second.indices;        \
+            const auto & indices = mtainput.indices;                      \
             for (const auto & i : c10::irange(indices.size())) {          \
                 index_map[indices[i]] = cur_index + i;                    \
             }                                                             \
@@ -300,19 +306,20 @@ std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
 }                                                                         \
 void foreach_tensor_##op_name##_cuda_(TensorList tensors) {               \
     check_foreach_api_restrictions(tensors);                              \
-    if (can_use_fast_route(tensors) && !has_integral_tensor(tensors, /* includeBool */ true)) {   \
-        function##_<functor_name>(tensors);                                                       \
-        return;                                                                                   \
-    }                                                                                             \
     OptionalDeviceGuard g;                                                                        \
+    if (can_use_fast_route(tensors) && !has_integral_tensor(tensors, /* includeBool */ true)) {   \
+        g.reset_device(tensors[0].device());                                                      \
+        return function##_<functor_name>(tensors);                                                \
+    }                                                                                             \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {             \
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                  \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                     \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                \
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;                  \
-            if (!dtype_mtainputs.second.is_mta_compatible() || has_integral_tensor(mta_input_tensors[0], /* includeBool */ true)) {              \
-                at::native::foreach_tensor_##op_name##_slow_(TensorList{mta_input_tensors[0]});   \
+            auto & mtainput = dtype_mtainputs.second;                                             \
+            if (is_cpu || !mtainput.is_mta_compatible() || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {              \
+                at::native::foreach_tensor_##op_name##_slow_(mtainput.get_tensorList(0));         \
             } else {                                                                              \
-                function##_<functor_name>(mta_input_tensors);                                     \
+                function##_<functor_name>(mtainput.mta_input_tensors);                            \
             }                                                                                     \
         }                                                                                         \
     }                                                                                             \
@@ -388,7 +395,9 @@ std::vector<Tensor> foreach_tensor_neg_cuda(TensorList tensors) {
             "Negation on a bool tensor is not supported. If you are trying to invert a mask, please use the `~`"
             "or `logical_not()` operator on the individual tensors instead.");
     }
+    OptionalDeviceGuard g;
     if (can_use_fast_route(tensors)) {
+        g.reset_device(tensors[0].device());
         return all_types_half_complex_bfloat16<std::negate>(tensors);
     }
 
@@ -397,22 +406,21 @@ std::vector<Tensor> foreach_tensor_neg_cuda(TensorList tensors) {
     std::vector<size_t> index_map(tensors.size(), 0);
 
     size_t cur_index = 0;
-    OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
-            const OptionalDeviceGuard device_guard(device_of(mta_input_tensors[0][0]));
-            if (!dtype_mtainputs.second.is_mta_compatible()) {
-                for (const auto & t : at::native::foreach_tensor_neg_slow(TensorList{mta_input_tensors[0]})) {
+            auto & mtainput = dtype_mtainputs.second;
+            if (is_cpu || !mtainput.is_mta_compatible()) {
+                for (const auto & t : at::native::foreach_tensor_neg_slow(mtainput.get_tensorList(0))) {
                     result.emplace_back(std::move(t));
                 }
             } else {
-                for (const auto & t : all_types_half_complex_bfloat16<std::negate>(mta_input_tensors)) {
+                for (const auto & t : all_types_half_complex_bfloat16<std::negate>(mtainput.mta_input_tensors)) {
                     result.emplace_back(std::move(t));
                 }
             }
-            const auto & indices = dtype_mtainputs.second.indices;
+            const auto & indices = mtainput.indices;
             for (const auto & i : c10::irange(indices.size())) {
                 index_map[indices[i]] = cur_index + i;
             }
@@ -437,20 +445,21 @@ void foreach_tensor_neg_cuda_(TensorList tensors) {
             "Negation on a bool tensor is not supported. If you are trying to invert a mask, please use the `~`"
             "or `logical_not()` operator on the individual tensors instead.");
     }
+    OptionalDeviceGuard g;
     if (can_use_fast_route(tensors)) {
+        g.reset_device(tensors[0].device());
         all_types_half_complex_bfloat16_<std::negate>(tensors);
         return;
     }
 
-    OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
-            if (!dtype_mtainputs.second.is_mta_compatible()) {
-                at::native::foreach_tensor_neg_slow_(TensorList{mta_input_tensors[0]});
+            auto & mtainput = dtype_mtainputs.second;
+            if (!mtainput.is_mta_compatible()) {
+                at::native::foreach_tensor_neg_slow_(mtainput.get_tensorList(0));
             } else {
-                all_types_half_complex_bfloat16_<std::negate>(mta_input_tensors);
+                all_types_half_complex_bfloat16_<std::negate>(mtainput.mta_input_tensors);
             }
         }
     }
@@ -466,8 +475,9 @@ struct Abs {
 
 std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
     check_foreach_api_restrictions(tensors);
-
+    OptionalDeviceGuard g;
     if (can_use_fast_route(tensors)) {
+        g.reset_device(tensors[0].device());
         return all_types_complex_bfloat16_half_bool<Abs>(tensors);
     }
 
@@ -476,24 +486,25 @@ std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
     std::vector<size_t> index_map(tensors.size(), 0);
 
     size_t cur_index = 0;
-    OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
-            if (!dtype_mtainputs.second.is_mta_compatible() ||
-                std::any_of(mta_input_tensors[0].begin(), mta_input_tensors[0].begin(),
+            auto & mtainput = dtype_mtainputs.second;
+            if (is_cpu ||
+                !mtainput.is_mta_compatible() ||
+                std::any_of(mtainput.mta_input_tensors[0].begin(), mtainput.mta_input_tensors[0].begin(),
                     [](const auto & t) { return at::isComplexType(t.scalar_type()); })
             ) {
-                for (const auto & t : at::native::foreach_tensor_abs_slow(TensorList{mta_input_tensors[0]})) {
+                for (const auto & t : at::native::foreach_tensor_abs_slow(mtainput.get_tensorList(0))) {
                     result.emplace_back(std::move(t));
                 }
             } else {
-                for (const auto & t : all_types_complex_bfloat16_half_bool<Abs>(mta_input_tensors)) {
+                for (const auto & t : all_types_complex_bfloat16_half_bool<Abs>(mtainput.mta_input_tensors)) {
                     result.emplace_back(std::move(t));
                 }
             }
-            const auto & indices = dtype_mtainputs.second.indices;
+            const auto & indices = mtainput.indices;
             for (const auto & i : c10::irange(indices.size())) {
                 index_map[indices[i]] = cur_index + i;
             }
@@ -510,24 +521,25 @@ std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
 
 void foreach_tensor_abs_cuda_(TensorList tensors) {
     check_foreach_api_restrictions(tensors);
-
+    OptionalDeviceGuard g;
     if (can_use_fast_route(tensors)) {
-        all_types_complex_bfloat16_half_bool_<Abs>(tensors);
-        return;
+        g.reset_device(tensors[0].device());
+        return all_types_complex_bfloat16_half_bool_<Abs>(tensors);
     }
 
-    OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
-            const bool has_complex = std::any_of(
-                mta_input_tensors[0].begin(), mta_input_tensors[0].end(),
-                [](const auto & t) { return at::isComplexType(t.scalar_type()); });
-            if (!dtype_mtainputs.second.is_mta_compatible() || has_complex) {
-                at::native::foreach_tensor_abs_slow_(TensorList{mta_input_tensors[0]});
+            auto & mtainput = dtype_mtainputs.second;
+            if (is_cpu||
+                !mtainput.is_mta_compatible() ||
+                std::any_of(mtainput.mta_input_tensors[0].begin(), mtainput.mta_input_tensors[0].begin(),
+                    [](const auto & t) { return at::isComplexType(t.scalar_type()); })
+            ) {
+                at::native::foreach_tensor_abs_slow_(mtainput.get_tensorList(0));
             } else {
-                all_types_complex_bfloat16_half_bool_<Abs>(mta_input_tensors);
+                all_types_complex_bfloat16_half_bool_<Abs>(mtainput.mta_input_tensors);
             }
         }
     }
@@ -535,8 +547,9 @@ void foreach_tensor_abs_cuda_(TensorList tensors) {
 
 void foreach_tensor_zero_cuda_(TensorList tensors) {
     check_foreach_api_restrictions(tensors);
-
+    OptionalDeviceGuard g;
     if (can_use_fast_route(tensors)) {
+        g.reset_device(tensors[0].device());
         std::vector<std::vector<Tensor>> tensor_lists{tensors.vec()};
         AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(
             ScalarType::Half,
@@ -551,21 +564,23 @@ void foreach_tensor_zero_cuda_(TensorList tensors) {
         );
     }
 
-    OptionalDeviceGuard g;
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
-        g.reset_device(at::Device(dev_dtypemtainputs.first));
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
+        if (!is_cpu) {
+            g.reset_device(at::Device(dev_dtypemtainputs.first));
+        }
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
-            auto & mta_input_tensors = dtype_mtainputs.second.mta_input_tensors;
-            if (!dtype_mtainputs.second.is_mta_compatible()) {
-                at::native::foreach_tensor_zero_slow_(TensorList{mta_input_tensors[0]});
+            auto & mtainput = dtype_mtainputs.second;
+            if (is_cpu || !mtainput.is_mta_compatible()) {
+                at::native::foreach_tensor_zero_slow_(mtainput.get_tensorList(0));
             } else {
                 AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND1(
                     ScalarType::Half,
-                    mta_input_tensors[0][0].scalar_type(),
+                    mtainput.mta_input_tensors[0][0].scalar_type(),
                     "foreach_zero_cuda_",
                     [&]() {
                         multi_tensor_apply<1>(
-                            mta_input_tensors,
+                            mtainput.mta_input_tensors,
                             ZeroFunctor<scalar_t, /* depth */ 1, /* r_args_depth */ 1, /* res_arg_index */ 0>()
                         );
                     }
