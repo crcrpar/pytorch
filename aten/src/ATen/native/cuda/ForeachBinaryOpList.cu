@@ -92,22 +92,21 @@ void foreach_tensor_list_op_(std::vector<std::vector<at::Tensor>> & mta_input_te
     );
 }
 
-#include <iostream>
-
 #define FOREACH_BINARY_OP_LIST(NAME, OP, DIVISION_OP)                                                       \
 void foreach_tensor_##NAME##_list_kernel_cuda_(TensorList tensors1, TensorList tensors2) {                  \
     check_foreach_api_restrictions(tensors1, tensors2);                                                     \
+    OptionalDeviceGuard g;                                                                                  \
     if (can_use_fast_route(tensors1, tensors2, DIVISION_OP)) {                                              \
+        g.reset_device(tensors1[0].device());                                                               \
         return foreach_tensor_list_op_<OP>(tensors1, tensors2);                                             \
     }                                                                                                       \
-    OptionalDeviceGuard g;                                                                                  \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors1, tensors2)) {            \
         const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                            \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                               \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                          \
             auto & mtainput = dtype_mtainputs.second;                                                       \
             if (is_cpu || !mtainput.is_mta_compatible(DIVISION_OP)) {                                       \
-                at::native::foreach_tensor_##NAME##_list_kernel_slow(                                       \
+                at::native::foreach_tensor_##NAME##_list_kernel_slow_(                                      \
                     mtainput.get_tensorList(0), mtainput.get_tensorList(1));                                \
             } else {                                                                                        \
                 foreach_tensor_list_op_<OP>(mtainput.mta_input_tensors);                                    \
@@ -126,7 +125,6 @@ std::vector<Tensor> foreach_tensor_##NAME##_list_kernel_cuda(TensorList tensors1
     std::vector<at::Tensor> result;                                                                         \
     result.reserve(tensors1.size());                                                                        \
     std::vector<size_t> index_map(tensors1.size());                                                         \
-    std::cout << "result.size() = " << result.size() << ", index_map.size() " << index_map.size() << '\n';  \
                                                                                                             \
     size_t cur_index = 0;                                                                                   \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors1, tensors2)) {            \
@@ -135,7 +133,7 @@ std::vector<Tensor> foreach_tensor_##NAME##_list_kernel_cuda(TensorList tensors1
         size_t dtype_iter = 0;                                                                              \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                          \
             auto & mtainput = dtype_mtainputs.second;                                                       \
-            if (is_cpu || !mtainput.is_mta_compatible()) {                                                  \
+            if (is_cpu || !mtainput.is_mta_compatible(DIVISION_OP)) {                                       \
                 for (const auto & t : at::native::foreach_tensor_##NAME##_list_kernel_slow(                 \
                         mtainput.get_tensorList(0), mtainput.get_tensorList(1))) {                          \
                     result.emplace_back(std::move(t));                                                      \
