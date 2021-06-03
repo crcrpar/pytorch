@@ -178,7 +178,9 @@ std::vector<Tensor> foreach_pointwise_op(std::vector<std::vector<at::Tensor>>& m
 #define FOREACH_POINTWISE_OP_SCALAR(NAME, OP)                                                                                         \
 std::vector<Tensor> foreach_tensor_##NAME##_scalar_cuda(TensorList input, TensorList tensors1, TensorList tensors2, const Scalar& scalar) {  \
     check_foreach_api_restrictions(input, tensors1, tensors2);                                                                        \
+    OptionalDeviceGuard g;                                                                                                            \
     if (can_use_fast_route({input, tensors1, tensors2}, scalar) && !has_integral_tensor(input, /* includeBool */ true)) {             \
+        g.reset_device(input[0].device());                                                                                            \
         return foreach_pointwise_op<OP>(input, tensors1, tensors2, scalar);                                                           \
     }                                                                                                                                 \
     std::vector<Tensor> result;                                                                                                       \
@@ -186,12 +188,12 @@ std::vector<Tensor> foreach_tensor_##NAME##_scalar_cuda(TensorList input, Tensor
     std::vector<size_t> index_map(input.size(), 0);                                                                                   \
                                                                                                                                       \
     size_t cur_index = 0;                                                                                                             \
-    OptionalDeviceGuard g;                                                                                                            \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2)) {                               \
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                                                      \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                         \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                    \
             auto & mtainput = dtype_mtainputs.second;                                                                                 \
-            if (!mtainput.is_mta_compatible(scalar) || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {     \
+            if (is_cpu || !mtainput.is_mta_compatible(scalar) || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {     \
                 for (const auto & t : at::native::foreach_tensor_##NAME##_scalar_slow(                                                \
                         mtainput.get_tensorList(0), mtainput.get_tensorList(1), mtainput.get_tensorList(2), scalar)) {                \
                     result.emplace_back(std::move(t));                                                                                \
@@ -218,16 +220,17 @@ std::vector<Tensor> foreach_tensor_##NAME##_scalar_cuda(TensorList input, Tensor
                                                                                                                                       \
 void foreach_tensor_##NAME##_scalar_cuda_(TensorList input, TensorList tensors1, TensorList tensors2, const Scalar& scalar) {                \
     check_foreach_api_restrictions(input, tensors1, tensors2);                                                                        \
-                                                                                                                                      \
+    OptionalDeviceGuard g;                                                                                                            \
     if (can_use_fast_route({input, tensors1, tensors2}, scalar) && !has_integral_tensor(input, /* includeBool */ true)) {             \
+        g.reset_device(input[0].device());                                                                                            \
         return foreach_pointwise_op_<OP>(input, tensors1, tensors2, scalar);                                                          \
     }                                                                                                                                 \
-    OptionalDeviceGuard g;                                                                                                            \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2)) {                               \
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                                                      \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                         \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                    \
             auto & mtainput = dtype_mtainputs.second;                                                                                 \
-            if (!mtainput.is_mta_compatible(scalar) || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {     \
+            if (is_cpu || !mtainput.is_mta_compatible(scalar) || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {     \
                 at::native::foreach_tensor_##NAME##_scalar_slow_(                                                                     \
                     mtainput.get_tensorList(0), mtainput.get_tensorList(1), mtainput.get_tensorList(2), scalar);                      \
             } else {                                                                                                                  \
@@ -241,7 +244,9 @@ void foreach_tensor_##NAME##_scalar_cuda_(TensorList input, TensorList tensors1,
 #define FOREACH_POINTWISE_OP_SCALARLIST(NAME, OP)                                                                                                        \
 std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_cuda(TensorList input, TensorList tensors1, TensorList tensors2, at::ArrayRef<Scalar> scalars) {  \
     check_foreach_api_restrictions(input, tensors1, tensors2, scalars);                                                                                  \
+    OptionalDeviceGuard g;                                                                                                                               \
     if (can_use_fast_route({input, tensors1, tensors2}, scalars) && !has_integral_tensor(input, /* includeBool */ true)) {                               \
+        g.reset_device(input[0].device());                                                                                                               \
         return foreach_pointwise_op<OP>(input, tensors1, tensors2, scalars);                                                                             \
     }                                                                                                                                                    \
                                                                                                                                                          \
@@ -250,12 +255,12 @@ std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_cuda(TensorList input, Te
     std::vector<size_t> index_map(input.size(), 0);                                                                                                      \
                                                                                                                                                          \
     size_t cur_index = 0;                                                                                                                                \
-    OptionalDeviceGuard g;                                                                                                                               \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2, scalars)) {                                         \
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                                                                         \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                                            \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                                       \
             auto & mtainput = dtype_mtainputs.second;                                                                                                    \
-            if (!mtainput.is_mta_compatible() || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {                              \
+            if (is_cpu || !mtainput.is_mta_compatible() || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) {                    \
                 for (const auto & t : at::native::foreach_tensor_##NAME##_scalarlist_slow(                                                               \
                         mtainput.get_tensorList(0), mtainput.get_tensorList(1), mtainput.get_tensorList(2), mtainput.get_scalarList())) {                \
                     result.emplace_back(std::move(t));                                                                                                   \
@@ -282,11 +287,12 @@ std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_cuda(TensorList input, Te
                                                                                                                                                          \
 void foreach_tensor_##NAME##_scalarlist_cuda_(TensorList input, TensorList tensors1, TensorList tensors2, at::ArrayRef<Scalar> scalars) {                \
     check_foreach_api_restrictions(input, tensors1, tensors2, scalars);                                                                                  \
+    OptionalDeviceGuard g;                                                                                                                               \
     if (can_use_fast_route({input, tensors1, tensors2}, scalars) && !has_integral_tensor(input, /* includeBool */ true)) {                               \
+        g.reset_device(input[0].device());                                                                                                               \
         return foreach_pointwise_op_<OP>(input, tensors1, tensors2, scalars);                                                                            \
     }                                                                                                                                                    \
                                                                                                                                                          \
-    OptionalDeviceGuard g;                                                                                                                               \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(input, tensors1, tensors2, scalars)) {                                         \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                                            \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                                       \
@@ -330,6 +336,30 @@ std::vector<Tensor> foreach_maximum_minimum_op(TensorList tensors1, TensorList t
     );
     return tensor_lists[2];
 }
+
+template<template<class> class Op>
+std::vector<Tensor> foreach_maximum_minimum_op(std::vector<std::vector<Tensor>>& mta_input_tensors) {
+    std::vector<Tensor> vec_res;
+    vec_res.reserve(mta_input_tensors[0].size());
+    for (const auto & t : mta_input_tensors[0]) {
+        vec_res.emplace_back(at::native::empty_like(t));
+    }
+    mta_input_tensors.emplace_back(std::move(vec_res));
+
+    AT_DISPATCH_ALL_TYPES_AND(
+        kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_maximum_minimum_op_cuda",
+        [&]() {
+            using opmath_t = get_opmath_t<scalar_t>::opmath_t;
+            multi_tensor_apply<3>(
+                mta_input_tensors,
+                PointwiseOpListFunctor<opmath_t, 3>(),
+                Op<opmath_t>()
+            );
+        }
+    );
+    return std::move(mta_input_tensors[2]);
+}
+
 #define FUNCTOR(op_name, functor_name)             \
 template<typename T>                               \
 struct functor_name {                              \
@@ -351,11 +381,43 @@ struct functor_name {                              \
 FUNCTOR(OP_NAME, FUNCTOR_NAME);                                                                 \
 std::vector<Tensor> foreach_tensor_##NAME##_cuda(TensorList tensors1, TensorList tensors2) {    \
     check_foreach_api_restrictions(tensors1, tensors2);                                         \
-    if (!can_use_fast_route({tensors1, tensors2}) || has_bool_tensor(tensors1)) {               \
-        return at::native::foreach_tensor_##NAME##_slow(tensors1, tensors2);                    \
-    } else {                                                                                    \
+    OptionalDeviceGuard g;                                                                      \
+    if (can_use_fast_route({tensors1, tensors2}) && !has_bool_tensor(tensors1)) {               \
+        g.reset_device(tensors1[0].device());                                                   \
         return foreach_maximum_minimum_op<FUNCTOR_NAME>(tensors1, tensors2);                    \
     }                                                                                           \
+    std::vector<Tensor> result;                                                                 \
+    result.reserve(tensors1.size());                                                            \
+    std::vector<size_t> index_map(tensors1.size(), 0);                                          \
+                                                                                                \
+    size_t cur_index = 0;                                                                       \
+    for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors1, tensors2)) {                                            \
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");                                                                            \
+        g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                               \
+        for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                          \
+            auto & mtainput = dtype_mtainputs.second;                                                                                       \
+            if (is_cpu || !mtainput.is_mta_compatible()) {                                                                                  \
+                for (const auto & t : at::native::foreach_tensor_##NAME##_slow(mtainput.get_tensorList(0), mtainput.get_tensorList(1))) {   \
+                    result.emplace_back(std::move(t));                                                                                      \
+                }                                                                                                                           \
+            } else {                                                                                                                        \
+                for (const auto & t : foreach_maximum_minimum_op<FUNCTOR_NAME>(mtainput.mta_input_tensors)) {                               \
+                    result.emplace_back(std::move(t));                                          \
+                }                                                                               \
+            }                                                                                   \
+            const auto & indices = mtainput.indices;                                            \
+            for (const auto & i : c10::irange(indices.size())) {                                \
+                index_map[indices[i]] = cur_index + i;                                          \
+            }                                                                                   \
+            cur_index += indices.size();                                                        \
+        }                                                                                       \
+    }                                                                                           \
+    std::vector<Tensor> sorted_result;                                                          \
+    sorted_result.reserve(tensors1.size());                                                     \
+    for (const auto & i : index_map) {                                                          \
+        sorted_result.emplace_back(std::move(result[i]));                                       \
+    }                                                                                           \
+    return sorted_result;                                                                       \
 }                                                                                               \
 
 FOREACH_MAXIMUM_MINIMUM_OP(maximum, max, MaximumFunctor);
