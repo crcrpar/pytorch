@@ -19,7 +19,7 @@ std::vector<Tensor> foreach_pointwise_op(TensorList input, TensorList tensors1, 
     tensor_lists.emplace_back(tensors2.vec());
     tensor_lists.emplace_back(std::move(vec_res));
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<4>(tensor_lists,
                               PointwiseOpScalarFunctor<scalar_t,
@@ -42,7 +42,7 @@ std::vector<Tensor> foreach_pointwise_op(std::vector<std::vector<at::Tensor>>& m
     }
     mta_input_tensors.emplace_back(std::move(vec_res));
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<4>(mta_input_tensors,
                               PointwiseOpScalarFunctor<scalar_t,
@@ -63,7 +63,7 @@ void foreach_pointwise_op_(TensorList input, TensorList tensors1, TensorList ten
     tensor_lists.emplace_back(tensors1.vec());
     tensor_lists.emplace_back(tensors2.vec());
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<3>(tensor_lists,
                               PointwiseOpScalarFunctor<scalar_t,
@@ -77,7 +77,7 @@ void foreach_pointwise_op_(TensorList input, TensorList tensors1, TensorList ten
 
 template<template<class> class Op>
 void foreach_pointwise_op_(std::vector<std::vector<at::Tensor>>& mta_input_tensors, const Scalar& scalar) {
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<3>(mta_input_tensors,
                               PointwiseOpScalarFunctor<scalar_t,
@@ -97,7 +97,7 @@ void foreach_pointwise_op_(TensorList input, TensorList tensors1, TensorList ten
     tensor_lists.emplace_back(tensors1.vec());
     tensor_lists.emplace_back(tensors2.vec());
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<3, opmath_t>(tensor_lists,
                                         scalars,
@@ -111,7 +111,7 @@ void foreach_pointwise_op_(TensorList input, TensorList tensors1, TensorList ten
 
 template<template<class> class Op>
 void foreach_pointwise_op_(std::vector<std::vector<at::Tensor>>& mta_input_tensors, at::ArrayRef<Scalar> scalars) {
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op__cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<3, opmath_t>(mta_input_tensors,
                                         scalars,
@@ -138,7 +138,7 @@ std::vector<Tensor> foreach_pointwise_op(TensorList input, TensorList tensors1, 
     tensor_lists.emplace_back(tensors2.vec());
     tensor_lists.emplace_back(std::move(vec_res));
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, input[0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<4, opmath_t>(tensor_lists,
                                         scalars,
@@ -161,7 +161,7 @@ std::vector<Tensor> foreach_pointwise_op(std::vector<std::vector<at::Tensor>>& m
     }
     mta_input_tensors.emplace_back(std::move(vec_res));
 
-    AT_DISPATCH_ALL_TYPES_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND(kHalf, mta_input_tensors[0][0].scalar_type(), "foreach_pointwise_op_cuda", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;
         multi_tensor_apply<4, opmath_t>(mta_input_tensors,
                                         scalars,
@@ -396,7 +396,7 @@ std::vector<Tensor> foreach_tensor_##NAME##_cuda(TensorList tensors1, TensorList
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                               \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                                          \
             auto & mtainput = dtype_mtainputs.second;                                                                                       \
-            if (is_cpu || !mtainput.is_mta_compatible()) {                                                                                  \
+            if (is_cpu || !mtainput.is_mta_compatible() || has_bool_tensor(mtainput.get_tensorList(0))) {                                   \
                 for (const auto & t : at::native::foreach_tensor_##NAME##_slow(mtainput.get_tensorList(0), mtainput.get_tensorList(1))) {   \
                     result.emplace_back(std::move(t));                                                                                      \
                 }                                                                                                                           \

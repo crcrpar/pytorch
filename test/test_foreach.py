@@ -720,9 +720,9 @@ class TestForeach(TestCase):
             if torch.cuda.is_available() and torch.cuda.device_count() > 1:
                 tensor1 = torch.zeros(10, 10, device="cuda:0")
                 tensor2 = torch.ones(10, 10, device="cuda:1")
-                with self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device"):
+                with self.assertRaisesRegex(RuntimeError, "Operand tensors must be"):
                     bin_op([tensor1], [tensor2])
-                with self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device"):
+                with self.assertRaisesRegex(RuntimeError, "Operand tensors must be"):
                     bin_op_([tensor1], [tensor2])
 
             # Corresponding tensors with different sizes
@@ -875,7 +875,8 @@ class TestForeach(TestCase):
             else:
                 self.assertEqual(actual, tensors1)
 
-    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=True))
+    # TODO(mkozuki): Let foreach pointwise functions support complex dtypes
+    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=False, include_bool=False, include_complex=False))
     def test_pointwise_op_tensors_on_different_devices(self, device, dtype):
         if self.device_type != 'cuda':
             self.skipTest('CUDA is necessary for tests with tensors on different devices')
