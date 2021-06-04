@@ -40,7 +40,7 @@ std::vector<Tensor> foreach_binary_op(std::vector<std::vector<Tensor>>& mta_inpu
     }
     mta_input_tensors.emplace_back(vec_res);
 
-    AT_DISPATCH_ALL_TYPES_AND3(
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
         kBFloat16, kHalf, kBool,
         mta_input_tensors[0][0].scalar_type(), "foreach_binary_op_scalarlist_cuda",
         [&]() {
@@ -76,7 +76,7 @@ void foreach_binary_op_(TensorList tensors, at::ArrayRef<Scalar> scalars) {
 
 template<template<class> class Op>
 void foreach_binary_op_(std::vector<std::vector<Tensor>>& mta_input_tensors, at::ArrayRef<Scalar> scalars) {
-    AT_DISPATCH_ALL_TYPES_AND3(
+    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
         kBFloat16, kHalf, kBool,
         mta_input_tensors[0][0].scalar_type(), "foreach_binary_op_scalarlist_cuda_", [&]() {
         using opmath_t = get_opmath_t<scalar_t>::opmath_t;

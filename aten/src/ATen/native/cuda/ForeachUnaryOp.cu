@@ -255,7 +255,6 @@ struct functor_name {                                                \
     __device__ T operator()(T t) const { return std::op_name(t); }   \
 };                                                                   \
 
-#include <iostream>
 // TODO(mkozuki): DRY the sorting of output tensors
 // TODO(mkozuki): Make sorting inplace?
 // given a functor and a "dispatch function", creates the outplace and inplace operations
@@ -274,18 +273,15 @@ std::vector<Tensor> foreach_tensor_##op_name##_cuda(TensorList tensors) { \
                                                                           \
     size_t cur_index = 0;                                                 \
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {                                          \
-        std::cout << "Device: " << dev_dtypemtainputs.first << '\n';                                                           \
         const bool is_cpu = dev_dtypemtainputs.first == "cpu";                                                                 \
         g.reset_device(at::Device(dev_dtypemtainputs.first));                                                                  \
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {                                                             \
             auto & mtainput = dtype_mtainputs.second;                                                                          \
             if (is_cpu || !mtainput.is_mta_compatible() || has_integral_tensor(mtainput.get_tensorList(0), /* includeBool */ true)) { \
-                std::cout << "Slowpath\n";                                                                                     \
                 for (const auto & t : at::native::foreach_tensor_##op_name##_slow(mtainput.get_tensorList(0))) {               \
                     result.emplace_back(std::move(t));                                                                         \
                 }                                                                                                              \
             } else {                                                                                                           \
-                std::cout << "Fastpath\n";                                                                                     \
                 for (const auto & t : function<functor_name>(mtainput.mta_input_tensors)) {                                    \
                     result.emplace_back(std::move(t));                                                                         \
                 }                                                                                                              \
@@ -451,8 +447,7 @@ void foreach_tensor_neg_cuda_(TensorList tensors) {
     OptionalDeviceGuard g;
     if (can_use_fast_route(tensors)) {
         g.reset_device(tensors[0].device());
-        all_types_half_complex_bfloat16_<std::negate>(tensors);
-        return;
+        return all_types_half_complex_bfloat16_<std::negate>(tensors);
     }
 
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
@@ -479,7 +474,9 @@ struct Abs {
 std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
     check_foreach_api_restrictions(tensors);
     OptionalDeviceGuard g;
-    if (can_use_fast_route(tensors)) {
+    if (can_use_fast_route(tensors) &&
+        !std::any_of(tensors.begin(), tensors.end(),
+                     [](const auto & t) { return at::isComplexType(t.scalar_type()); })) {
         g.reset_device(tensors[0].device());
         return all_types_complex_bfloat16_half_bool<Abs>(tensors);
     }
@@ -494,11 +491,10 @@ std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mtainput = dtype_mtainputs.second;
-            if (is_cpu ||
-                !mtainput.is_mta_compatible() ||
-                std::any_of(mtainput.mta_input_tensors[0].begin(), mtainput.mta_input_tensors[0].begin(),
-                    [](const auto & t) { return at::isComplexType(t.scalar_type()); })
-            ) {
+            const bool is_mta_compat = mtainput.is_mta_compatible();
+            const auto & tensors = mtainput.mta_input_tensors[0];
+            const bool has_complex = std::any_of(tensors.begin(), tensors.end(), [](const auto& t) { return at::isComplexType(t.scalar_type()); });
+            if (is_cpu || !is_mta_compat || has_complex) {
                 for (const auto & t : at::native::foreach_tensor_abs_slow(mtainput.get_tensorList(0))) {
                     result.emplace_back(std::move(t));
                 }
@@ -525,7 +521,9 @@ std::vector<Tensor> foreach_tensor_abs_cuda(TensorList tensors) {
 void foreach_tensor_abs_cuda_(TensorList tensors) {
     check_foreach_api_restrictions(tensors);
     OptionalDeviceGuard g;
-    if (can_use_fast_route(tensors)) {
+    if (can_use_fast_route(tensors) &&
+        !std::any_of(tensors.begin(), tensors.end(),
+                     [](const auto & t) { return at::isComplexType(t.scalar_type()); })) {
         g.reset_device(tensors[0].device());
         return all_types_complex_bfloat16_half_bool_<Abs>(tensors);
     }
@@ -535,11 +533,10 @@ void foreach_tensor_abs_cuda_(TensorList tensors) {
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mtainput = dtype_mtainputs.second;
-            if (is_cpu||
-                !mtainput.is_mta_compatible() ||
-                std::any_of(mtainput.mta_input_tensors[0].begin(), mtainput.mta_input_tensors[0].begin(),
-                    [](const auto & t) { return at::isComplexType(t.scalar_type()); })
-            ) {
+            const bool is_mta_compat = mtainput.is_mta_compatible();
+            const auto & tensors = mtainput.mta_input_tensors[0];
+            const bool has_complex = std::any_of(tensors.begin(), tensors.end(), [](const auto& t) { return at::isComplexType(t.scalar_type()); });
+            if (is_cpu || !is_mta_compat || has_complex) {
                 at::native::foreach_tensor_abs_slow_(mtainput.get_tensorList(0));
             } else {
                 all_types_complex_bfloat16_half_bool_<Abs>(mtainput.mta_input_tensors);
@@ -569,9 +566,7 @@ void foreach_tensor_zero_cuda_(TensorList tensors) {
 
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
         const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
-        if (!is_cpu) {
-            g.reset_device(at::Device(dev_dtypemtainputs.first));
-        }
+        g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mtainput = dtype_mtainputs.second;
             if (is_cpu || !mtainput.is_mta_compatible()) {

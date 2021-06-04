@@ -455,6 +455,70 @@ class TestForeach(TestCase):
             runtime_error = e
         self.assertIsNone(runtime_error)
 
+    #
+    # Ops with list
+    #
+    def test_bin_op_list_error_cases(self, device):
+        for bin_op, bin_op_, _ in self.bin_ops:
+            tensors1 = []
+            tensors2 = []
+
+            # Empty lists
+            with self.assertRaisesRegex(RuntimeError, "There were no tensor arguments to this function"):
+                bin_op(tensors1, tensors2)
+            with self.assertRaisesRegex(RuntimeError, "There were no tensor arguments to this function"):
+                bin_op_(tensors1, tensors2)
+
+            # One empty list
+            tensors1.append(torch.tensor([1], device=device))
+            with self.assertRaisesRegex(RuntimeError, "Tensor list must have same number of elements as scalar list."):
+                bin_op(tensors1, tensors2)
+            with self.assertRaisesRegex(RuntimeError, "Tensor list must have same number of elements as scalar list."):
+                bin_op_(tensors1, tensors2)
+
+            # Lists have different amount of tensors
+            tensors2.append(torch.tensor([1], device=device))
+            tensors2.append(torch.tensor([1], device=device))
+            with self.assertRaisesRegex(RuntimeError, "Tensor lists must have the same number of tensors, got 1 and 2"):
+                bin_op(tensors1, tensors2)
+            with self.assertRaisesRegex(RuntimeError, "Tensor lists must have the same number of tensors, got 1 and 2"):
+                bin_op_(tensors1, tensors2)
+
+            # different devices
+            if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+                tensor1 = torch.zeros(10, 10, device="cuda:0")
+                tensor2 = torch.ones(10, 10, device="cuda:1")
+                with self.assertRaisesRegex(RuntimeError, "Operand tensors must be"):
+                    bin_op([tensor1], [tensor2])
+                with self.assertRaisesRegex(RuntimeError, "Operand tensors must be"):
+                    bin_op_([tensor1], [tensor2])
+
+            # Corresponding tensors with different sizes
+            tensors1 = [torch.zeros(10, 10, device=device) for _ in range(10)]
+            tensors2 = [torch.ones(11, 11, device=device) for _ in range(10)]
+            with self.assertRaisesRegex(RuntimeError, "Corresponding tensors in lists must have the same size"):
+                bin_op(tensors1, tensors2)
+            with self.assertRaisesRegex(RuntimeError, r", got \[10, 10\] and \[11, 11\]"):
+                bin_op_(tensors1, tensors2)
+
+    @dtypes(*torch.testing.get_all_dtypes())
+    def test_add_list(self, device, dtype):
+        self._test_bin_op_list(device, dtype, torch._foreach_add, torch._foreach_add_, torch.add)
+        self._test_bin_op_list_alpha(device, dtype, torch._foreach_add, torch._foreach_add_, torch.add)
+
+    @dtypes(*torch.testing.get_all_dtypes())
+    def test_sub_list(self, device, dtype):
+        if dtype == torch.bool:
+            with self.assertRaisesRegex(RuntimeError, "Subtraction, the `-` operator, with two bool"):
+                self._test_bin_op_list(device, dtype, torch._foreach_sub, torch._foreach_sub_, torch.sub)
+
+            with self.assertRaisesRegex(RuntimeError, "Subtraction, the `-` operator, with a bool tensor"):
+                self._test_bin_op_list_alpha(device, dtype, torch._foreach_sub, torch._foreach_sub_, torch.sub)
+        else:
+            self._test_bin_op_list(device, dtype, torch._foreach_sub, torch._foreach_sub_, torch.sub)
+            self._test_bin_op_list_alpha(device, dtype, torch._foreach_sub, torch._foreach_sub_, torch.sub)
+
+>>>>>>> 7b7f24feea... still test is broken, giving off CUDA IMA
     @dtypes(*torch.testing.get_all_dtypes())
     @ops(foreach_binary_op_db)
     def test_binary_op_list_error_cases(self, device, dtype, op):
@@ -631,6 +695,68 @@ class TestForeach(TestCase):
         # note(mkozuki): Limiting dtypes to FP32&FP64, we can safely run inplace ops.
         foreach_op_(tensors1, tensors2, tensors3)
         self.assertEqual(expected, tensors1)
+=======
+    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=True))
+    def test_binary_op_tensors_on_different_devices(self, device, dtype):
+        if self.device_type != 'cuda':
+            self.skipTest('CUDA is necessary for tests with tensors on different devices')
+        for foreach_op, foreach_op_, native_op in self.bin_ops:
+            # `tensors1`: ['cuda', 'cpu']
+            # `tensors2`: ['cuda', 'cpu']
+            _cuda_tensors = self._get_test_data(device, dtype, 2)
+            _cpu_tensors = self._get_test_data('cpu', dtype, 2)
+            tensors1, tensors2 = list(tensors for tensors in zip(_cuda_tensors, _cpu_tensors))
+
+            try:
+                actual = foreach_op(tensors1, tensors2)
+            except RuntimeError as e:
+                with self.assertRaisesRegex(type(e), re.escape(str(e))):
+                    [native_op(t1, t2) for t1, t2 in zip(tensors1, tensors2)]
+            else:
+                expected = [native_op(t1, t2) for t1, t2 in zip(tensors1, tensors2)]
+                self.assertEqual(expected, actual)
+            try:
+                foreach_op_(tensors1, tensors2)
+            except RuntimeError as e:
+                with self.assertRaisesRegex(type(e), re.escape(str(e))):
+                    [getattr(t1, native_op.__name__ + '_')(t2) for t1, t2 in zip(tensors1, tensors2)]
+            else:
+                self.assertEqual(actual, tensors1)
+
+    # TODO(mkozuki): Let foreach pointwise functions support complex dtypes
+    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=False, include_bool=False, include_complex=False))
+    def test_pointwise_op_tensors_on_different_devices(self, device, dtype):
+        if self.device_type != 'cuda':
+            self.skipTest('CUDA is necessary for tests with tensors on different devices')
+
+        pointwise_ops = [
+            (torch._foreach_addcmul, torch._foreach_addcmul_, torch.addcmul),
+            (torch._foreach_addcdiv, torch._foreach_addcdiv_, torch.addcdiv),
+        ]
+        for foreach_op, foreach_op_, native_op in pointwise_ops:
+            # tensors1: ['cuda', 'cpu]
+            # tensors2: ['cuda', 'cpu]
+            # tensors3: ['cuda', 'cpu]
+            _cuda_tensors = self._get_test_data(device, dtype, 3)
+            _cpu_tensors = self._get_test_data('cpu', dtype, 3)
+            tensors1, tensors2, tensors3 = list(tensors for tensors in zip(_cuda_tensors, _cpu_tensors))
+
+            try:
+                actual = foreach_op(tensors1, tensors2, tensors3)
+            except RuntimeError as e:
+                with self.assertRaisesRegex(type(e), re.escape(str(e))):
+                    expected = [native_op(t1, t2, t3) for t1, t2, t3 in zip(tensors1, tensors2, tensors3)]
+            else:
+                expected = [native_op(t1, t2, t3) for t1, t2, t3 in zip(tensors1, tensors2, tensors3)]
+                self.assertEqual(expected, actual)
+            try:
+                foreach_op_(tensors1, tensors2, tensors3)
+            except RuntimeError as e:
+                with self.assertRaisesRegex(type(e), re.escape(str(e))):
+                    [getattr(t1, native_op.__name__ + '_')(t2, t3) for t1, t2, t3 in zip(tensors1, tensors3, tensors3)]
+            else:
+                self.assertEqual(expected, tensors1)
+>>>>>>> 7b7f24feea... still test is broken, giving off CUDA IMA
 
 
 instantiate_device_type_tests(TestForeach, globals())
