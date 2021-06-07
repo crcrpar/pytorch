@@ -168,7 +168,9 @@ void foreach_tensor_sub_scalarlist_kernel_cuda_(TensorList tensors, at::ArrayRef
         sub_check(tensors[i], scalars[i]);
     }
     OptionalDeviceGuard g;
-    if (can_use_fast_route({tensors}, scalars)) {
+    if (can_use_fast_route({tensors}, scalars) &&
+        !std::any_of(scalars.begin(), scalars.end(), [](const auto& s) { return s.isComplex(); })
+    ) {
         g.reset_device(tensors[0].device());
         return foreach_binary_op_<std::minus>(tensors, scalars);
     }
@@ -177,7 +179,10 @@ void foreach_tensor_sub_scalarlist_kernel_cuda_(TensorList tensors, at::ArrayRef
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mtainput = dtype_mtainputs.second;
-            if (is_cpu || !mtainput.is_mta_compatible()) {
+            const auto& scalarList = mtainput.get_scalarList();
+            if (is_cpu || !mtainput.is_mta_compatible() ||
+                std::any_of(scalarList.begin(), scalarList.end(), [](const auto& s) { return s.isComplex(); })
+            ) {
                 at::native::foreach_tensor_sub_scalarlist_kernel_slow_(mtainput.get_tensorList(0), mtainput.get_scalarList());
             } else {
                 foreach_binary_op_<std::minus>(mtainput.mta_input_tensors, mtainput.get_scalarList());
@@ -186,13 +191,16 @@ void foreach_tensor_sub_scalarlist_kernel_cuda_(TensorList tensors, at::ArrayRef
     }
 }
 
+#include <iostream>
 std::vector<Tensor> foreach_tensor_sub_scalarlist_kernel_cuda(TensorList tensors, at::ArrayRef<Scalar> scalars) {
     check_foreach_api_restrictions(tensors, scalars);
     for (const auto & i : c10::irange(tensors.size())) {
         sub_check(tensors[i], scalars[i]);
     }
     OptionalDeviceGuard g;
-    if (can_use_fast_route({tensors}, scalars)) {
+    const bool fastestpath = can_use_fast_route({tensors}, scalars);
+    if (can_use_fast_route({tensors}, scalars)
+    ) {
         g.reset_device(tensors[0].device());
         return foreach_binary_op<std::minus>(tensors, scalars);
     }
@@ -207,7 +215,10 @@ std::vector<Tensor> foreach_tensor_sub_scalarlist_kernel_cuda(TensorList tensors
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mtainput = dtype_mtainputs.second;
-            if(is_cpu || !mtainput.is_mta_compatible()) {
+            const bool compat = mtainput.is_mta_compatible();
+            const auto& scalarList = mtainput.get_scalarList();
+            const bool has_complex = std::any_of(scalarList.begin(), scalarList.end(), [](const auto& s) { return s.isComplex(); });
+            if(is_cpu || !compat || has_complex) {
                 for (const auto & t : at::native::foreach_tensor_sub_scalarlist_kernel_slow(
                         mtainput.get_tensorList(0), mtainput.get_scalarList())) {
                     result.emplace_back(std::move(t));

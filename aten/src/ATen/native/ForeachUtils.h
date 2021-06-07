@@ -1,5 +1,6 @@
 #pragma once
 #include <ATen/ATen.h>
+#include <ATen/native/utils/ParamsHash.h>
 
 #include <c10/util/irange.h>
 
@@ -207,6 +208,7 @@ using mta_input_tensors_t = std::vector<tensorvec_t>;
 using scalarvec_t = std::vector<Scalar>;
 using indexvec_t = std::vector<size_t>;
 
+#include <iostream>
 class MTAInputTensorsAndScalars {
  public:
   mta_input_tensors_t mta_input_tensors;
@@ -277,6 +279,7 @@ class MTAInputTensorsAndScalars {
     return TensorList(mta_input_tensors[i]);
   }
 
+  // Check vector<vector<Tensor>> and ArrayRef<Scalar> are compatible with MultiTensorApply or not.
   bool is_mta_compatible() const {
     return _is_mta_compatible({}, false);
   }
@@ -313,24 +316,30 @@ class MTAInputTensorsAndScalars {
       }
     }
 
+    if (scalarList.size() == 0) {
+      return true;
+    }
+
     for (const auto & i : c10::irange(mta_input_tensors[0].size())) {
       if (does_op_promote_integer_inputs_to_float) {
-        if (at::isIntegralType(mta_input_tensors[0][i].scalar_type(), /* includeBool */ true)) {
-          return false;
+        for (const auto& tensors : mta_input_tensors) {
+          if (at::isIntegralType(tensors[i].scalar_type(), /* includeBool */ true)) {
+            return false;
+          }
         }
       }
 
-      if (scalarList.size() == 1) {
-        if (will_promote_tensor(mta_input_tensors[0][i], scalarList[0])) {
-          return false;
-        }
-      } else if (scalarList.size() > 1) {
-        if (scalarList[i].isComplex()) {
-          return false;
-        }
-        if (will_promote_tensor(mta_input_tensors[0][i], scalarList[i])) {
-          return false;
-        }
+      const Scalar& scalar = scalarList.size() == 1 ? scalarList[0] : scalarList[i];
+      if (scalar.isComplex()) {
+        return false;
+      }
+      const auto requires_promotion = std::any_of(mta_input_tensors.begin(), mta_input_tensors.end(),
+          [&i, &scalar](const auto& tensors) { return will_promote_tensor(tensors[i], scalar); });
+      // if (std::any_of(mta_input_tensors.begin(), mta_input_tensors.end(),
+      //     [&i, &scalar](const auto& tensors) { return will_promote_tensor(tensors[i], scalar); })
+      if (requires_promotion) {
+        return false;
+       break;
       }
     }
     return true;
@@ -355,18 +364,8 @@ struct DtypeHashFunctor {
 template<int N_TENSORS> using dtype_map_t = std::unordered_map< dtypekey_t<N_TENSORS>, MTAInputTensorsAndScalars, DtypeHashFunctor<N_TENSORS> >;
 template<int N_TENSORS> using device_map_t = std::unordered_map< devicekey_t, dtype_map_t<N_TENSORS> >;
 
-Scalar get_scalar(ArrayRef<Scalar> scalarlist, const size_t i) {
-  switch (scalarlist.size()) {
-    case 0:
-      return 0;
-      break;
-    case 1:
-      return scalarlist[0];
-      break;
-    default:
-      return scalarlist[i];
-      break;
-  }
+inline Scalar get_scalar(ArrayRef<Scalar> scalarList, const size_t i) {
+  return scalarList.size() == 1 ? scalarList[0] : scalarList[i];
 }
 
 device_map_t<1> separate_tensors_by_device_and_dtype(TensorList tensors) {
