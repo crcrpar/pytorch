@@ -4259,7 +4259,7 @@ foreach_unary_op_db: List[OpInfo] = [
     ),
 ]
 
-foreach_binary_op_db: List[OpInfo] = [
+foreach_binary_op_db: List[ForeachFuncInfo] = [
     ForeachFuncInfo(
         "add",
         dtypesIfCPU=all_types_and_complex_and(torch.bool, torch.bfloat16, torch.float16),
@@ -4281,6 +4281,19 @@ foreach_binary_op_db: List[OpInfo] = [
         "div",
         dtypesIfCPU=all_types_and_complex_and(torch.bool, torch.bfloat16, torch.float16),
         dtypesIfCUDA=all_types_and_complex_and(torch.bool, torch.bfloat16, torch.float16),
+    ),
+]
+
+foreach_pointwise_op_db: List[ForeachFuncInfo] = [
+    ForeachFuncInfo(
+        "addcmul",
+        dtypesIfCPU=all_types_and_complex(),
+        dtypesIfCUDA=all_types_and_complex_and(torch.half, torch.bfloat16),
+    ),
+    ForeachFuncInfo(
+        "addcdiv",
+        dtypesIfCPU=all_types_and_complex(),
+        dtypesIfCUDA=all_types_and_complex_and(torch.half, torch.bfloat16),
     ),
 ]
 
