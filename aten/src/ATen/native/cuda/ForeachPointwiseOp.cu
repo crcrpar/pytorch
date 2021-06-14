@@ -312,7 +312,7 @@ FOREACH_POINTWISE_OP_SCALAR(addcdiv, std::divides);
 FOREACH_POINTWISE_OP_SCALARLIST(addcmul, std::multiplies);
 FOREACH_POINTWISE_OP_SCALARLIST(addcdiv, std::divides);
 
-
+// FIXME(mkozuki): Float16 tests failing
 template<template<class> class Op>
 std::vector<Tensor> foreach_maximum_minimum_op(TensorList tensors1, TensorList tensors2) {
     std::vector<std::vector<Tensor>> tensor_lists{tensors1.vec(), tensors2.vec()};
@@ -360,14 +360,13 @@ std::vector<Tensor> foreach_maximum_minimum_op(std::vector<std::vector<Tensor>>&
     return std::move(mta_input_tensors[2]);
 }
 
+#include <limits>
 #define FUNCTOR(op_name, functor_name)             \
 template<typename T>                               \
 struct functor_name {                              \
     __device__ T operator()(T t1, T t2) const {    \
-        if (t1 != t1) {                            \
-            return t1;                             \
-        } else if (t2 != t2) {                     \
-            return t2;                             \
+        if (t1 != t1 || t2 != t2) {                \
+            return std::numeric_limits<T>::quiet_NaN(); \
         } else {                                   \
             return ::op_name(t1, t2);              \
         }                                          \

@@ -448,10 +448,11 @@ void foreach_tensor_neg_cuda_(TensorList tensors) {
     }
 
     for (auto & dev_dtypemtainputs : separate_tensors_by_device_and_dtype(tensors)) {
+        const bool is_cpu = (dev_dtypemtainputs.first == "cpu");
         g.reset_device(at::Device(dev_dtypemtainputs.first));
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mtainput = dtype_mtainputs.second;
-            if (!mtainput.is_mta_compatible()) {
+            if (is_cpu || !mtainput.is_mta_compatible()) {
                 at::native::foreach_tensor_neg_slow_(mtainput.get_tensorList(0));
             } else {
                 all_types_half_complex_bfloat16_<std::negate>(mtainput.mta_input_tensors);

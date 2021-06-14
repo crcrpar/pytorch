@@ -205,7 +205,7 @@ std::vector<Tensor> foreach_tensor_sub_scalar_kernel_cuda(TensorList tensors, co
         g.reset_device(dev_dtypemtainputs.first);
         for (auto & dtype_mtainputs : dev_dtypemtainputs.second) {
             auto & mtainput = dtype_mtainputs.second;
-            if (is_cpu || !mtainput.is_mta_compatible(scalar)) {
+            if (is_cpu || !mtainput.is_mta_compatible(scalar, true)) {
                 for (const auto & t : at::native::foreach_tensor_sub_scalar_kernel_slow(mtainput.get_tensorList(0), scalar)) {
                     result.emplace_back(std::move(t));
                 }

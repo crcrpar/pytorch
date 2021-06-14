@@ -1,7 +1,7 @@
 import re
 import torch
 import unittest
-from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_ROCM, TEST_WITH_SLOW
+from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_ROCM, TEST_WITH_SLOW, make_tensor
 from torch.testing._internal.common_device_type import \
     (instantiate_device_type_tests, dtypes, skipCUDAIfRocm, skipMeta, ops)
 from torch._six import inf, nan
@@ -216,7 +216,6 @@ class TestForeach(TestCase):
             torch.tensor([float('inf')], device=device, dtype=dtype),
             torch.tensor([float('nan')], device=device, dtype=dtype)
         ]
-
         expected = [torch.max(a1, b1) for a1, b1 in zip(a, b)]
         res = torch._foreach_maximum(a, b)
         self.assertEqual(expected, res)
@@ -327,15 +326,6 @@ class TestForeach(TestCase):
                 scalars = [1 for _ in range(N)]
                 expected = [torch_bin_op(t, s) for t, s in zip(tensors, scalars)]
 
-                # we dont support bool and complex types on CUDA for now
-                if dtype in torch.testing.get_all_complex_dtypes() and self.device_type == 'cuda':
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op_(tensors, scalars)
-
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op(tensors, scalars)
-                    return
-
                 res = foreach_bin_op(tensors, scalars)
 
                 if dtype == torch.bool:
@@ -440,15 +430,6 @@ class TestForeach(TestCase):
                 expected = [torch_bin_op(t.to(dtype=control_dtype), s) for t, s in zip(tensors, scalars)]
                 if (dtype is torch.float16 or dtype is torch.bfloat16):
                     expected = [e.to(dtype=dtype) for e in expected]
-
-                # we dont support bool and complex types on CUDA for now
-                if (dtype in torch.testing.get_all_complex_dtypes() or dtype == torch.bool) and self.device_type == 'cuda':
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op_(tensors, scalars)
-
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op(tensors, scalars)
-                    return
 
                 res = foreach_bin_op(tensors, scalars)
 
@@ -574,18 +555,6 @@ class TestForeach(TestCase):
             for foreach_bin_op, foreach_bin_op_, torch_bin_op in self.bin_ops:
                 tensors = self._get_test_data(device, dtype, N)
                 scalars = [True for _ in range(N)]
-
-                # we dont support complex types on CUDA for now
-                if (dtype in torch.testing.get_all_complex_dtypes()) and self.device_type == 'cuda':
-                    # There are a two types of different errors that will be thrown.
-                    # - Not implemented
-                    # - Subtraction with a bool tensor
-                    with self.assertRaises(RuntimeError):
-                        foreach_bin_op_(tensors, scalars)
-
-                    with self.assertRaises(RuntimeError):
-                        foreach_bin_op(tensors, scalars)
-                    continue
 
                 if foreach_bin_op == torch._foreach_sub:
                     with self.assertRaisesRegex(RuntimeError, "Subtraction, the `-` operator"):
@@ -829,8 +798,13 @@ class TestForeach(TestCase):
         if self.device_type != 'cuda':
             self.skipTest('CUDA is necessary for tests with tensors on different devices')
         # tensors: ['cuda', 'cpu]
-        tensors = op.sample_inputs(device, dtype, 2)
-        tensors[1] = tensors[1].to('cpu')
+        tensors = [
+            make_tensor((2, 2), device=device, dtype=dtype),
+            make_tensor((2, 2), device='cpu', dtype=dtype),
+        ]
+        # tensors = op.sample_inputs(device, dtype, 2)
+        # tensors[1] = tensors[1].to('cpu')
+        print(tensors)
         try:
             actual = op.get_method()(tensors)
         except RuntimeError as e:
@@ -838,7 +812,8 @@ class TestForeach(TestCase):
                 [op.ref(t) for t in tensors]
         else:
             expected = [op.ref(t) for t in tensors]
-            self.assertEqual(expected, actual)
+            for e, a in zip(expected, actual):
+                self.assertEqual(e, a)
 
         try:
             op.get_inplace()(tensors)
