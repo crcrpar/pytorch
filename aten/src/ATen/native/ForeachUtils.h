@@ -102,8 +102,6 @@ bool will_promote_tensor(const Tensor& tensor, const Scalar& scalar, bool does_o
   return tensor.scalar_type() != at::native::result_type(scalar, tensor);
 }
 
-#include <iostream>
-#include <typeinfo>
 // TODO(mkozuki): Remove device-dtype check once tensor grouping is completed.
 // Please, make sure to call check_foreach_api_restrictions before calling this method.
 // There is a set of preconditions that have to be satisfied.
@@ -300,30 +298,28 @@ class MTAInputTensorsAndScalars {
       }
     }
 
-    if (scalarList.size() == 0) {
-      return true;
+    for (const auto & i : c10::irange(mta_input_tensors.size())) {
+      for (const auto & j : c10::irange(mta_input_tensors[0].size())) {
+        if (mta_input_tensors[0][j].strides() != mta_input_tensors[i][j].strides()) {
+          return false;
+        }
+      }
     }
 
     for (const auto & i : c10::irange(mta_input_tensors[0].size())) {
       if (does_op_promote_integer_inputs_to_float) {
-        for (const auto& tensors : mta_input_tensors) {
-          if (at::isIntegralType(tensors[i].scalar_type(), /* includeBool */ true)) {
-            return false;
-          }
+        if (at::isIntegralType(mta_input_tensors[0][i].scalar_type(), /* includeBool */ true)) {
+          return false;
         }
       }
-
-      const Scalar& scalar = scalarList.size() == 1 ? scalarList[0] : scalarList[i];
-      if (scalar.isComplex()) {
-        return false;
-      }
-      const auto requires_promotion = std::any_of(mta_input_tensors.begin(), mta_input_tensors.end(),
-          [&i, &scalar](const auto& tensors) { return will_promote_tensor(tensors[i], scalar); });
-      // if (std::any_of(mta_input_tensors.begin(), mta_input_tensors.end(),
-      //     [&i, &scalar](const auto& tensors) { return will_promote_tensor(tensors[i], scalar); })
-      if (requires_promotion) {
-        return false;
-       break;
+      if (scalarList.size() > 0) {
+        const auto& scalar = scalarList.size() == 1 ? scalarList[0] : scalarList[i];
+        if (scalar.isComplex()) {
+          return false;
+        }
+        if (will_promote_tensor(mta_input_tensors[0][i], scalar)) {
+          return false;
+        }
       }
     }
     return true;
