@@ -329,7 +329,7 @@ std::vector<Tensor> foreach_maximum_minimum_op(TensorList tensors1, TensorList t
             using opmath_t = get_opmath_t<scalar_t>::opmath_t;
             multi_tensor_apply<3>(
                 tensor_lists,
-                PointwiseOpListFunctor<opmath_t, 3>(),
+                PointwiseOpListFunctor<scalar_t, 3>(),
                 Op<opmath_t>()
             );
         }
@@ -337,6 +337,8 @@ std::vector<Tensor> foreach_maximum_minimum_op(TensorList tensors1, TensorList t
     return tensor_lists[2];
 }
 
+// todo(mkozuki): Refactor the confusing mixed use of `scalar_t` and `opmath_t`
+// inside the lambda passed to dispatcher.
 template<template<class> class Op>
 std::vector<Tensor> foreach_maximum_minimum_op(std::vector<std::vector<Tensor>>& mta_input_tensors) {
     std::vector<Tensor> vec_res;
@@ -352,7 +354,7 @@ std::vector<Tensor> foreach_maximum_minimum_op(std::vector<std::vector<Tensor>>&
             using opmath_t = get_opmath_t<scalar_t>::opmath_t;
             multi_tensor_apply<3>(
                 mta_input_tensors,
-                PointwiseOpListFunctor<opmath_t, 3>(),
+                PointwiseOpListFunctor<scalar_t, 3>(),
                 Op<opmath_t>()
             );
         }
@@ -360,13 +362,15 @@ std::vector<Tensor> foreach_maximum_minimum_op(std::vector<std::vector<Tensor>>&
     return std::move(mta_input_tensors[2]);
 }
 
-#include <limits>
 #define FUNCTOR(op_name, functor_name)             \
 template<typename T>                               \
 struct functor_name {                              \
     __device__ T operator()(T t1, T t2) const {    \
-        if (t1 != t1 || t2 != t2) {                \
-            return std::numeric_limits<T>::quiet_NaN(); \
+        if (t1 != t1) {                            \
+            return t1;                             \
+        }                                          \
+        if (t2 != t2) {                            \
+            return t2;                             \
         } else {                                   \
             return ::op_name(t1, t2);              \
         }                                          \
