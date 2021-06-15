@@ -190,7 +190,6 @@ using mta_input_tensors_t = std::vector<tensorvec_t>;
 using scalarvec_t = std::vector<Scalar>;
 using indexvec_t = std::vector<size_t>;
 
-#include <iostream>
 class MTAInputTensorsAndScalars {
  public:
   mta_input_tensors_t mta_input_tensors;
@@ -328,20 +327,9 @@ class MTAInputTensorsAndScalars {
 
 using devicekey_t = std::string;
 template<int N_TENSORS> using dtypekey_t = std::array<uint8_t, N_TENSORS>;
-
-// boost::hash_combine like hash functor for `std::array<uint8_t, N_TENSORS>`.
-template<int N_TENSORS>
-struct DtypeHashFunctor {
-  size_t operator() (const dtypekey_t<N_TENSORS> dtypes) const {
-    size_t seed = 0;
-    for (const auto & v : dtypes) {
-      seed ^= std::hash<uint8_t>()(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
-    }
-    return seed;
-  }
-};
-
-template<int N_TENSORS> using dtype_map_t = std::unordered_map< dtypekey_t<N_TENSORS>, MTAInputTensorsAndScalars, DtypeHashFunctor<N_TENSORS> >;
+template<int N_TENSORS> using DtypesHash = ParamsHash<std::array<uint8_t, N_TENSORS>>;
+template<int N_TENSORS> using DtypesEqual = ParamsEqual<std::array<uint8_t, N_TENSORS>>;
+template<int N_TENSORS> using dtype_map_t = std::unordered_map< dtypekey_t<N_TENSORS>, MTAInputTensorsAndScalars, DtypesHash<N_TENSORS>, DtypesEqual<N_TENSORS> >;
 template<int N_TENSORS> using device_map_t = std::unordered_map< devicekey_t, dtype_map_t<N_TENSORS> >;
 
 inline Scalar get_scalar(ArrayRef<Scalar> scalarList, const size_t i) {
