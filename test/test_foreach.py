@@ -7,7 +7,7 @@ from torch.testing._internal.common_device_type import \
     (instantiate_device_type_tests, dtypes, skipCUDAIfRocm, skipMeta, ops)
 from torch._six import inf, nan
 from torch.testing._internal.common_methods_invocations import \
-    (foreach_unary_op_db, foreach_binary_op_db, foreach_pointwise_op_db)
+    (foreach_unary_op_db, foreach_binary_op_db, foreach_pointwise_op_db, foreach_minmax_op_db)
 
 # Includes some values such that N * N won't be a multiple of 4,
 # which should ensure we test the vectorized and non-vectorized
@@ -136,7 +136,7 @@ class TestForeach(TestCase):
             return self._create_funcs(
                 op, self._calc_expected_cudaLaunchKernels(op, n_expected_cudaLaunchKernels, dtype, scalars, n_tensors))
 
-    # note(mkozuki): Foreach binary ops upcast 16-bits inputs to 32-bits and downcast outputs to original dtype.
+    # note(mkozuki): Some foreach ops upcast 16-bits inputs to 32-bits and downcast outputs to original dtype.
     def _requires_cast(self, op, dtype, is_fastpath, inputs, inputs2=None):
         second_arg = inputs[1] if inputs2 is None else inputs2
         _requires_cast_binary = (
@@ -155,7 +155,11 @@ class TestForeach(TestCase):
             ) and
             dtype in (torch.bfloat16, torch.float16)
         )
-        return _requires_cast_binary or _requires_cast_pointwise
+        _requires_cast_minmax = (
+            op.func in (torch._foreach_maximum, torch._foreach_minimum) and
+            dtype in (torch.float16,)
+        )
+        return _requires_cast_binary or _requires_cast_pointwise or _requires_cast_minmax
 
     # todo(mkozuki): remove this method once `TestForeach` is refactored with `@op` decorator.
     def _get_test_data(self, device, dtype, N):
@@ -802,54 +806,57 @@ class TestForeach(TestCase):
             scalar = complex(1 - random.random(), 1 - random.random())
             self._test_pointwise(device, dtype, op, N, False, scalars=scalar)
 
-    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=False, include_complex=False))
-    def test_min_max(self, device, dtype):
+    def _test_minmax(self, device, dtype, opinfo, N, is_fastpath):
+        op, ref, *_ = self._get_funcs(
+            opinfo, dtype=dtype, scalars=None, n_tensors=N, is_fastpath=is_fastpath)
+        inputs = [
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+        ]
+        self._regular_binary_test(dtype, op, ref, inputs, is_fastpath)
+
+    @ops(foreach_minmax_op_db)
+    def test_minmax_fastpath(self, device, dtype, op):
         for N in N_values:
-            tensors1 = self._get_test_data(device, dtype, N)
-            tensors2 = self._get_test_data(device, dtype, N)
+            self._test_minmax(device, dtype, op, N, True)
 
-            # Mimics cuda kernel dtype flow.  With fp16/bf16 input, runs in fp32 and casts output back to fp16/bf16.
-            control_dtype = torch.float32 if (self.device_type == 'cuda' and
-                                              (dtype is torch.float16 or dtype is torch.bfloat16)) else dtype
+    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=False, include_complex=False))
+    @ops(foreach_minmax_op_db)
+    def test_minmax_slowpath(self, device, dtype, op):
+        for N in N_values:
+            self._test_minmax(device, dtype, op, N, False)
 
-            expected_max = [torch.max(tensors1[i].to(dtype=control_dtype),
-                                      tensors2[i].to(dtype=control_dtype)).to(dtype=dtype) for i in range(N)]
-
-            expected_min = [torch.min(tensors1[i].to(dtype=control_dtype),
-                                      tensors2[i].to(dtype=control_dtype)).to(dtype=dtype) for i in range(N)]
-
-            res_max = torch._foreach_maximum(tensors1, tensors2)
-            self.assertEqual(res_max, expected_max)
-
-            res_min = torch._foreach_minimum(tensors1, tensors2)
-            self.assertEqual(res_min, expected_min)
-
-    @dtypes(*(torch.testing.get_all_fp_dtypes(include_half=True, include_bfloat16=False)))
-    def test_max_min_float_inf_nan(self, device, dtype):
+    def _test_minmax_float_inf_nan(self, device, dtype, op, is_fastpath):
+        if dtype in torch.testing.get_all_int_dtypes():
+            self.skipTest("float('inf') cannot be convert to integer")
         a = [
             torch.tensor([float('inf')], device=device, dtype=dtype),
             torch.tensor([-float('inf')], device=device, dtype=dtype),
             torch.tensor([float('nan')], device=device, dtype=dtype),
             torch.tensor([float('nan')], device=device, dtype=dtype)
         ]
-
         b = [
             torch.tensor([-float('inf')], device=device, dtype=dtype),
             torch.tensor([float('inf')], device=device, dtype=dtype),
             torch.tensor([float('inf')], device=device, dtype=dtype),
             torch.tensor([float('nan')], device=device, dtype=dtype)
         ]
+        op, ref, *_ = self._get_funcs(
+            op, n_expected_cudaLaunchKernels=1 if is_fastpath else 0)
+        self._regular_binary_test(dtype, op, ref, (a, b), is_fastpath)
 
-        expected = [torch.max(a1, b1) for a1, b1 in zip(a, b)]
-        res = torch._foreach_maximum(a, b)
-        self.assertEqual(expected, res)
-
-        expected = [torch.min(a1, b1) for a1, b1 in zip(a, b)]
-        res = torch._foreach_minimum(a, b)
-        self.assertEqual(expected, res)
+    @ops(foreach_minmax_op_db)
+    def test_minmax_float_inf_nan_fastpath(self, device, dtype, op):
+        self._test_minmax_float_inf_nan(device, dtype, op, True)
 
     @dtypes(*(torch.testing.get_all_fp_dtypes(include_half=True, include_bfloat16=False)))
-    def test_max_min_inf_nan(self, device, dtype):
+    @ops(foreach_minmax_op_db)
+    def test_minmax_float_inf_nan_slowpath(self, device, dtype, op):
+        self._test_minmax_float_inf_nan(device, dtype, op, False)
+
+    def _test_minmax_inf_nan(self, device, dtype, op, is_fastpath):
+        if dtype in torch.testing.get_all_int_dtypes():
+            self.skipTest("float('inf') cannot be convert to integer")
         a = [
             torch.tensor([inf], device=device, dtype=dtype),
             torch.tensor([-inf], device=device, dtype=dtype),
@@ -863,14 +870,18 @@ class TestForeach(TestCase):
             torch.tensor([inf], device=device, dtype=dtype),
             torch.tensor([nan], device=device, dtype=dtype)
         ]
+        op, ref, *_ = self._get_funcs(
+            op, n_expected_cudaLaunchKernels=1 if is_fastpath else 0)
+        self._regular_binary_test(dtype, op, ref, (a, b), is_fastpath)
 
-        expected_max = [torch.max(a1, b1) for a1, b1 in zip(a, b)]
-        res_max = torch._foreach_maximum(a, b)
-        self.assertEqual(expected_max, res_max)
+    @ops(foreach_minmax_op_db)
+    def test_minmax_inf_nan_fastpath(self, device, dtype, op):
+        self._test_minmax_inf_nan(device, dtype, op, True)
 
-        expected_min = [torch.min(a1, b1) for a1, b1 in zip(a, b)]
-        res_min = torch._foreach_minimum(a, b)
-        self.assertEqual(expected_min, res_min)
+    @dtypes(*(torch.testing.get_all_fp_dtypes(include_half=True, include_bfloat16=False)))
+    @ops(foreach_minmax_op_db)
+    def test_minmax_inf_nan_slowpath(self, device, dtype, op):
+        self._test_minmax_inf_nan(device, dtype, op, False)
 
     @dtypes(*torch.testing.get_all_dtypes())
     def test_add_scalar_with_empty_list_and_empty_tensor(self, device, dtype):
