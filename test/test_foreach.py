@@ -216,7 +216,6 @@ class TestForeach(TestCase):
             torch.tensor([float('inf')], device=device, dtype=dtype),
             torch.tensor([float('nan')], device=device, dtype=dtype)
         ]
-
         expected = [torch.max(a1, b1) for a1, b1 in zip(a, b)]
         res = torch._foreach_maximum(a, b)
         self.assertEqual(expected, res)
@@ -327,15 +326,6 @@ class TestForeach(TestCase):
                 scalars = [1 for _ in range(N)]
                 expected = [torch_bin_op(t, s) for t, s in zip(tensors, scalars)]
 
-                # we dont support bool and complex types on CUDA for now
-                if dtype in torch.testing.get_all_complex_dtypes() and self.device_type == 'cuda':
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op_(tensors, scalars)
-
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op(tensors, scalars)
-                    return
-
                 res = foreach_bin_op(tensors, scalars)
 
                 if dtype == torch.bool:
@@ -440,15 +430,6 @@ class TestForeach(TestCase):
                 expected = [torch_bin_op(t.to(dtype=control_dtype), s) for t, s in zip(tensors, scalars)]
                 if (dtype is torch.float16 or dtype is torch.bfloat16):
                     expected = [e.to(dtype=dtype) for e in expected]
-
-                # we dont support bool and complex types on CUDA for now
-                if (dtype in torch.testing.get_all_complex_dtypes() or dtype == torch.bool) and self.device_type == 'cuda':
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op_(tensors, scalars)
-
-                    with self.assertRaisesRegex(RuntimeError, "not implemented for"):
-                        foreach_bin_op(tensors, scalars)
-                    return
 
                 res = foreach_bin_op(tensors, scalars)
 
@@ -574,18 +555,6 @@ class TestForeach(TestCase):
             for foreach_bin_op, foreach_bin_op_, torch_bin_op in self.bin_ops:
                 tensors = self._get_test_data(device, dtype, N)
                 scalars = [True for _ in range(N)]
-
-                # we dont support complex types on CUDA for now
-                if (dtype in torch.testing.get_all_complex_dtypes()) and self.device_type == 'cuda':
-                    # There are a two types of different errors that will be thrown.
-                    # - Not implemented
-                    # - Subtraction with a bool tensor
-                    with self.assertRaises(RuntimeError):
-                        foreach_bin_op_(tensors, scalars)
-
-                    with self.assertRaises(RuntimeError):
-                        foreach_bin_op(tensors, scalars)
-                    continue
 
                 if foreach_bin_op == torch._foreach_sub:
                     with self.assertRaisesRegex(RuntimeError, "Subtraction, the `-` operator"):
@@ -720,9 +689,9 @@ class TestForeach(TestCase):
             if torch.cuda.is_available() and torch.cuda.device_count() > 1:
                 tensor1 = torch.zeros(10, 10, device="cuda:0")
                 tensor2 = torch.ones(10, 10, device="cuda:1")
-                with self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device"):
+                with self.assertRaisesRegex(RuntimeError, "Operand tensors must be"):
                     bin_op([tensor1], [tensor2])
-                with self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device"):
+                with self.assertRaisesRegex(RuntimeError, "Operand tensors must be"):
                     bin_op_([tensor1], [tensor2])
 
             # Corresponding tensors with different sizes
@@ -875,7 +844,8 @@ class TestForeach(TestCase):
             else:
                 self.assertEqual(actual, tensors1)
 
-    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=True))
+    # TODO(mkozuki): Let foreach pointwise functions support complex dtypes
+    @dtypes(*torch.testing.get_all_dtypes(include_bfloat16=False, include_bool=False, include_complex=False))
     def test_pointwise_op_tensors_on_different_devices(self, device, dtype):
         if self.device_type != 'cuda':
             self.skipTest('CUDA is necessary for tests with tensors on different devices')

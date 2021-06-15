@@ -373,6 +373,7 @@ struct PointwiseOpScalarListFunctor {
         }
 };
 
+// used only by foreach maximum/minimum
 template<typename T, int depth>
 struct PointwiseOpListFunctor {
     using opmath_t = typename get_opmath_t<T>::opmath_t;
