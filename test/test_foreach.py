@@ -70,13 +70,14 @@ class TestForeach(TestCase):
     # to original dtype, while regular implementations don't.
     def _requires_cast(self, op, dtype, is_fastpath, inputs):
         second_arg = inputs[1] if isinstance(inputs[1], list) else [inputs[1] for _ in range(len(inputs[0]))]
-        return (
-            op.func in (torch._foreach_add, torch._foreach_sub, torch._foreach_add_, torch._foreach_sub_) and
-            dtype in (torch.bfloat16, torch.float16) and
-            self.is_cuda and
-            is_fastpath and
-            not any(isinstance(a, complex) for a in second_arg)
-        )
+        # return (
+        #     op.func in (torch._foreach_add, torch._foreach_sub, torch._foreach_add_, torch._foreach_sub_) and
+        #     dtype in (torch.bfloat16, torch.float16) and
+        #     self.is_cuda and
+        #     is_fastpath and
+        #     not any(isinstance(a, complex) for a in second_arg)
+        # )
+        return False
 
     # todo(mkozuki): remove this method once `TestForeach` is refactored with `@op` decorator.
     def _get_test_data(self, device, dtype, N):
