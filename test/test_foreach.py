@@ -4,7 +4,7 @@ import random
 import re
 import torch
 import unittest
-from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_ROCM, TEST_WITH_SLOW, make_tensor
+from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_ROCM, TEST_WITH_SLOW
 from torch.testing._internal.common_device_type import \
     (instantiate_device_type_tests, dtypes, onlyCUDA, skipCUDAIfRocm, skipMeta, ops)
 from torch.testing._internal.common_methods_invocations import \
@@ -630,13 +630,8 @@ class TestForeach(TestCase):
     def test_unary_op_tensors_on_different_devices(self, device, dtype, op):
         method, ref, inplace_method, ref_inplace = self._get_funcs(op, 1)
         # tensors: ['cuda', 'cpu]
-        tensors = [
-            make_tensor((2, 2), device=device, dtype=dtype),
-            make_tensor((2, 2), device='cpu', dtype=dtype),
-        ]
-        # tensors = op.sample_inputs(device, dtype, 2)
-        # tensors[1] = tensors[1].to('cpu')
-        print(tensors)
+        tensors = op.sample_inputs(device, dtype, 2)
+        tensors[1] = tensors[1].to('cpu')
         try:
             actual = method((tensors,), False, False)
         except RuntimeError as e:
