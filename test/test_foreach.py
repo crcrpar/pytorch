@@ -1,7 +1,7 @@
 import re
 import torch
 import unittest
-from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_ROCM, TEST_WITH_SLOW, make_tensor
+from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_ROCM, TEST_WITH_SLOW
 from torch.testing._internal.common_device_type import \
     (instantiate_device_type_tests, dtypes, skipCUDAIfRocm, skipMeta, ops)
 from torch._six import inf, nan
@@ -798,13 +798,8 @@ class TestForeach(TestCase):
         if self.device_type != 'cuda':
             self.skipTest('CUDA is necessary for tests with tensors on different devices')
         # tensors: ['cuda', 'cpu]
-        tensors = [
-            make_tensor((2, 2), device=device, dtype=dtype),
-            make_tensor((2, 2), device='cpu', dtype=dtype),
-        ]
-        # tensors = op.sample_inputs(device, dtype, 2)
-        # tensors[1] = tensors[1].to('cpu')
-        print(tensors)
+        tensors = op.sample_inputs(device, dtype, 2)
+        tensors[1] = tensors[1].to('cpu')
         try:
             actual = op.get_method()(tensors)
         except RuntimeError as e:
@@ -812,8 +807,7 @@ class TestForeach(TestCase):
                 [op.ref(t) for t in tensors]
         else:
             expected = [op.ref(t) for t in tensors]
-            for e, a in zip(expected, actual):
-                self.assertEqual(e, a)
+            self.assertEqual(expected, actual)
 
         try:
             op.get_inplace()(tensors)
