@@ -2,13 +2,15 @@ import itertools
 from numbers import Number
 import random
 import re
+from torch._C import INSERT_FOLD_PREPACK_OPS
 import torch
 import unittest
 from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_ROCM, TEST_WITH_SLOW
 from torch.testing._internal.common_device_type import \
     (instantiate_device_type_tests, dtypes, onlyCUDA, skipCUDAIfRocm, skipMeta, ops)
 from torch._six import inf, nan
-from torch.testing._internal.common_methods_invocations import foreach_unary_op_db, foreach_binary_op_db, make_tensor
+from torch.testing._internal.common_methods_invocations import \
+    (foreach_unary_op_db, foreach_binary_op_db, foreach_pointwise_op_db, foreach_minmax_op_db, make_tensor)
 
 # Includes some values such that N * N won't be a multiple of 4,
 # which should ensure we test the vectorized and non-vectorized
@@ -22,7 +24,12 @@ class RegularFuncWrapper:
     def __init__(self, func):
         self.func = func
 
-    def __call__(self, inputs, **kwargs):
+    def __call__(self, inputs, values=None, **kwargs):
+        if values is not None:
+            assert len(inputs) == 3
+            if isinstance(values, Number):
+                values = [values for _ in range(len(inputs[0]))]
+            return [self.func(*i, value=values[idx], **kwargs) for idx, i in enumerate(zip(*inputs))]
         if len(inputs) == 2 and isinstance(inputs[1], Number):
             # binary op with tensorlist and scalar.
             inputs[1] = [inputs[1] for _ in range(len(inputs[0]))]
@@ -297,6 +304,43 @@ class TestForeach(TestCase):
                     tensors1 = self._get_test_data(device, dtype, N + 1)
                     with self.assertRaisesRegex(RuntimeError, msg):
                         op(tensors, tensors1, tensors2, [2 for _ in range(N)])
+
+    def _pointwise_test(self, dtype, op, ref, inputs, is_fastpath, is_inplace, *, values=None):
+        ref_inputs = [[t.clone().detach() for t in inputs[0]], inputs[1], inputs[2]] if is_inplace else inputs
+        try:
+            actual = op(inputs, self.is_cuda, is_fastpath)
+        except RuntimeError as e:
+            with self.assertRaisesRegex(type(e), re.escape(str(e))):
+                ref(ref_inputs)
+        else:
+            expected = ref(ref_inputs)
+            self.assertEqual(expected, actual)
+        if values is not None:
+            try:
+                actual = op(inputs + [values], self.is_cuda, is_fastpath)
+            except RuntimeError as e:
+                with self.assertRaisesRegex(type(e), re.escape(str(e))):
+                    ref(ref_inputs, values=values)
+            else:
+                expected = ref(ref_inputs, values=values)
+                self.assertEqual(expected, actual)
+
+    def _test_pointwise_op(self, device, dtype, opinfo, N, is_fastpath, disable_fastpath):
+        n_expected_cudaLaunchKernels = N if disable_fastpath else 1
+        op, ref, inplace_op, inplace_ref = self._get_funcs(opinfo, n_expected_cudaLaunchKernels)
+        inputs = [
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+        ]
+        self._pointwise_test(dtype, op, ref, inputs, is_fastpath, is_inplace=False, values=None)
+        self._pointwise_test(dtype, inplace_op, inplace_ref, inputs, is_fastpath, is_inplace=True, values=None)
+
+    @ops(foreach_pointwise_op_db)
+    def test_pointwise_op_fastpath(self, device, dtype, op):
+        disable_fastpath = dtype in torch.testing.get_all_int_dtypes() + [torch.bool]
+        for N in N_values:
+            self._test_pointwise_op(device, dtype, op, N, True, disable_fastpath)
 
     # note(mkozuki): fastpath test uses dtypes which fastpath implementation supports.
     # To confirm the dtypes of `OpInfo` cover the dtypes that the function support,
