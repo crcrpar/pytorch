@@ -54,14 +54,15 @@ class TestForeach(TestCase):
     def is_cuda(self):
         return self.device_type == 'cuda'
 
-    # TODO(mkozuki): Better to use ForeachFuncInfo
+    # TODO(mkozuki): Use `@ops` ForeachFuncInfo
     @dtypes(*torch.testing.get_all_fp_dtypes(include_bfloat16=True, include_half=True))
     def test_norm(self, device, dtype):
         for p in (1, 2):
-            tensors = self._get_test_data(device, dtype, 20)
-            expected = [torch.norm(t, p=p) for t in tensors]
-            actual = torch._foreach_norm(tensors, p=p)
-            self.assertEqual(expected, actual)
+            for N in (20, 31):
+                tensors = self._get_test_data(device, dtype, N)
+                expected = [torch.norm(t, p=p) for t in tensors]
+                actual = torch._foreach_norm(tensors, p=p)
+                self.assertEqual(expected, actual)
 
     # note(mkozuki): It might be the case that the expected number of `cudaLaunchKernel`s
     # is greater than 1 once foreach functions internally separate their input `TensorList`s by
