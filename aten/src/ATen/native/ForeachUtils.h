@@ -17,6 +17,16 @@ bool has_bool_tensor(TensorList tensors) {
     [](const auto & t) -> bool { return t.scalar_type() == ScalarType::Bool; });
 }
 
+bool has_int_or_complex_tensor(TensorList tensors, const bool includeBool) {
+  return std::any_of(
+      tensors.begin(), tensors.end(),
+      [&includeBool](const auto & t) {
+        const auto stype = t.scalar_type();
+        return at::isIntegralType(stype, includeBool) || at::isComplexType(stype);
+        }
+      );
+}
+
 // Check foreach API restrictions
 // - Tensor lists must be non-empty.
 // - All TensorLists and ScalarLists must have the same number of elements.

@@ -142,8 +142,7 @@ std::vector<Tensor> foreach_tensor_norm_cuda(TensorList tensors, const Scalar& v
   const auto p = val.to<int64_t>();
   TORCH_CHECK(p == 1 || p == 2, "foreach_tensor_norm_list_kernel_cuda currently supports L1 & L2 norm");
   if (!can_use_fast_route(tensors) ||
-      std::any_of(tensors.begin(), tensors.end(),
-        [](const auto& t) { return at::isComplexType(t.scalar_type()); })) {
+      has_int_or_complex_tensor(tensors, /* includeBool */true)) {
     return foreach_tensor_norm_slow(tensors, val);
   }
 
@@ -161,11 +160,12 @@ std::vector<Tensor> foreach_tensor_norm_cuda(TensorList tensors, const Scalar& v
   auto ret_per_tensor = at::empty({ntensors}, options);
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
-  // note(mkozuki): complex dtypes are excluded mainly because `__shfl_down_sync` does
-  // not support those dtypes.
+  // note(mkozuki): Exclusion of Int and Complex dtypes
+  // - Int: at::norm does not support.
+  // - Complex: __shfl_down_sync does not support complex and foreach does not support functions whose inputs dtypes and output dtype are different.
   switch (p) {
     case 1:
-      AT_DISPATCH_ALL_TYPES_AND2(
+      AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, tensor_lists[0][0].scalar_type(), "foreach_tensor_norm_cuda", [&]() {
           using opmath_t = typename get_opmath_t<scalar_t>::opmath_t;
           multi_tensor_apply<1>(
@@ -182,7 +182,7 @@ std::vector<Tensor> foreach_tensor_norm_cuda(TensorList tensors, const Scalar& v
         });
       break;
     case 2:
-      AT_DISPATCH_ALL_TYPES_AND2(
+      AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, tensor_lists[0][0].scalar_type(), "foreach_tensor_norm_cuda", [&]() {
           using opmath_t = typename get_opmath_t<scalar_t>::opmath_t;
           multi_tensor_apply<1>(
@@ -202,7 +202,15 @@ std::vector<Tensor> foreach_tensor_norm_cuda(TensorList tensors, const Scalar& v
       TORCH_CHECK(false, "Invalid norm type ", p);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
-  return ret_per_tensor.split(1, 0);
+
+  // std::vector<Tensor> result = ret_per_tensor.split(1, 0);
+  std::vector<Tensor> result;
+  result.reserve(ntensors);
+  for (const auto& i : c10::irange(ntensors)) {
+    result.emplace_back(ret_per_tensor[i]);
+  }
+  // return ret_per_tensor.split(1, 0);
+  return result;
 }
 
 } // namespace native
