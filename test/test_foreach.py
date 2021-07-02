@@ -176,18 +176,31 @@ class TestForeach(TestCase):
     # note(mkozuki): fastpath test uses dtypes which fastpath implementation supports.
     # To confirm the dtypes of `OpInfo` cover the dtypes that the function support,
     # this test does not use `try-except` for fastpath.
-    def _regular_unary_test(self, dtype, op, ref, inputs, is_fastpath):
+    # note(mkozuki): Compare gradients computed by foreach against native function.
+    # Inspired by
+    # https://github.com/pytorch/pytorch/blob/a4d86e0d53235ee7e020594675bc25a28006c006/test/test_ops.py#L458  # NOQA
+    def _regular_unary_test(self, dtype, op, ref, inputs, is_fastpath, *, autograd_test=False):
+        fwd_pass = False
         if is_fastpath:
             self.assertEqual(ref(inputs), op(inputs, self.is_cuda, is_fastpath))
-            return
-        try:
-            actual = op(inputs, self.is_cuda, is_fastpath)
-        except RuntimeError as e:
-            with self.assertRaisesRegex(type(e), re.escape(str(e))):
-                ref(inputs)
+            fwd_pass = True
         else:
-            expected = ref(inputs)
-            self.assertEqual(actual, expected)
+            try:
+                actual = op(inputs, self.is_cuda, is_fastpath)
+            except RuntimeError as e:
+                with self.assertRaisesRegex(type(e), re.escape(str(e))):
+                    ref(inputs)
+            else:
+                expected = ref(inputs)
+                self.assertEqual(actual, expected)
+                fwd_pass = True
+        if fwd_pass and autograd_test:
+            # Backward for reference
+            inputs = [[t.clone().detach() for t in inputs[0]]]
+            ref_inputs = [[t.clone().detach() for t in inputs[0]]]
+            sum(ref(ref_inputs)).mean().backward()
+            sum(op(inputs, self.is_cuda, is_fastpath)).mean().backward()
+            self.assertEqual([t.grad for t in ref_inputs[0]], [t.grad for t in inputs[0]])
 
     # note(mkozuki): why `try-except` for both fastpath?
     # - inputs for fastpath can be integer tensors.
@@ -208,11 +221,17 @@ class TestForeach(TestCase):
 
     def _test_unary(self, device, dtype, opinfo, N, is_fastpath):
         op, ref, inplace_op, inplace_ref = self._get_funcs(opinfo)
-        inputs = opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+        print(opinfo.supports_autograd)
+        inputs = opinfo.sample_inputs(
+            device, dtype, N,
+            noncontiguous=not is_fastpath,
+            requires_grad=opinfo.supports_autograd,
+        ),
         # note(mkozuki): Complex inputs for `_foreach_abs` go through slowpath.
         if opinfo.name == "_foreach_abs" and dtype in torch.testing.get_all_complex_dtypes():
             is_fastpath = False
-        self._regular_unary_test(dtype, op, ref, inputs, is_fastpath)
+        self._regular_unary_test(
+            dtype, op, ref, inputs, is_fastpath, autograd_test=opinfo.supports_autograd)
         self._inplace_unary_test(dtype, inplace_op, inplace_ref, inputs, is_fastpath)
 
     @skipMeta
@@ -220,6 +239,8 @@ class TestForeach(TestCase):
     def test_unary_fastpath(self, device, dtype, op):
         for N in N_values:
             self._test_unary(device, dtype, op, N, is_fastpath=True)
+        else:
+            assert False
 
     @dtypes(*torch.testing.get_all_dtypes())
     @ops(foreach_unary_op_db)

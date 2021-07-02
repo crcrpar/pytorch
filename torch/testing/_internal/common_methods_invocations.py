@@ -2683,8 +2683,16 @@ class ShapeFuncInfo(OpInfo):
                                             **kwargs)
         self.ref = ref
 
-def sample_inputs_foreach(self, device, dtype, N, *, noncontiguous=False):
-    tensors = [make_tensor((N - i, N - i), device, dtype, noncontiguous=noncontiguous) for i in range(N)]
+def sample_inputs_foreach(self, device, dtype, N, *, noncontiguous=False, requires_grad=False):
+    tensors = [
+        make_tensor(
+            (N - (not requires_grad) * i, N - (not requires_grad) * i),
+            device,
+            dtype,
+            requires_grad=requires_grad,
+            noncontiguous=noncontiguous,
+        ) for i in range(N)
+    ]
     return tensors
 
 
@@ -2710,6 +2718,7 @@ class ForeachFuncInfo(OpInfo):
                  dtypesIfROCM=None,
                  safe_casts_outputs=True,
                  sample_inputs_func=sample_inputs_foreach,
+                 supports_autograd=False,
                  **kwargs):
         super().__init__(
             "_foreach_" + name,
@@ -2719,6 +2728,7 @@ class ForeachFuncInfo(OpInfo):
             dtypesIfROCM=dtypesIfROCM,
             safe_casts_outputs=safe_casts_outputs,
             sample_inputs_func=sample_inputs_func,
+            supports_autograd=supports_autograd,
             **kwargs
         )
 
@@ -4527,27 +4537,66 @@ def sample_inputs_kthvalue(op_info, device, dtype, requires_grad, **kwargs):
     return [SampleInput(tensor, args=args) for tensor, args in test_cases]
 
 foreach_unary_op_db: List[OpInfo] = [
-    ForeachFuncInfo('exp'),
-    ForeachFuncInfo('acos'),
-    ForeachFuncInfo('asin'),
-    ForeachFuncInfo('atan'),
-    ForeachFuncInfo('cos'),
-    ForeachFuncInfo('cosh'),
-    ForeachFuncInfo('log'),
-    ForeachFuncInfo('log10'),
-    ForeachFuncInfo('log2'),
-    ForeachFuncInfo('tan'),
-    ForeachFuncInfo('tanh'),
-    ForeachFuncInfo('sin'),
-    ForeachFuncInfo('sinh'),
+    ForeachFuncInfo(
+        'exp',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'acos',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'asin',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'atan',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'cos',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'cosh',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'log',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'log10',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'log2',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'tan',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'tanh',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'sin',
+        supports_autograd=True,
+    ),
+    ForeachFuncInfo(
+        'sinh',
+        supports_autograd=True,
+    ),
 
     ForeachFuncInfo(
         'neg',
         dtypes=all_types_and_complex(),
         dtypesIfCPU=all_types_and_complex(),
         dtypesIfCUDA=all_types_and_complex(),
-        sample_inputs_func=sample_inputs_foreach,
         safe_casts_outputs=False,
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4555,6 +4604,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_and_complex_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_and_complex_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4562,6 +4612,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4569,6 +4620,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4576,6 +4628,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4583,6 +4636,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4590,6 +4644,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4597,6 +4652,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4604,6 +4660,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4611,6 +4668,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4618,6 +4676,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4625,6 +4684,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4632,6 +4692,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypes=floating_types(),
         dtypesIfCPU=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -4641,6 +4702,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypesIfCUDA=all_types_and_complex_and(torch.bfloat16, torch.half, torch.bool),
         safe_casts_outputs=False,
         supports_forward_ad=True,
+        supports_autograd=True,
     ),
 ]
 
