@@ -20,6 +20,7 @@
 #include <c10/util/irange.h>
 #include <c10/core/QScheme.h>
 #include <THC/THCAtomics.cuh>
+#include <ATen/native/cuda/KernelUtils.cuh>
 
 #include <limits>
 
@@ -340,6 +341,7 @@ __global__ void indexAddSmallIndex(cuda::detail::TensorInfo<T, IndexType> dst,
                                    cuda::detail::TensorInfo<IndicesType, IndexType> indices,
                                    int dstAddDim,
                                    int srcAddDim,
+                                   IndexType totalSize,
                                    IndexType innerSize,
                                    int64_t dstAddDimSize,
                                    T alpha) {
@@ -367,7 +369,7 @@ __global__ void indexAddSmallIndex(cuda::detail::TensorInfo<T, IndexType> dst,
           cuda::detail::IndexToOffset<T, IndexType, SrcDim>::get(linearIndex, src);
       srcOffset += srcIndex * src.strides[srcAddDim];
 
-      gpuAtomicAddNoReturn(&dst.data[dstOffset], src.data[srcOffset] * alpha);
+      fastAtomicAdd(dst.data, dstOffset, totalSize, static_cast<T>(src.data[srcOffset] * alpha), true);
     }
   }
 }
@@ -389,6 +391,7 @@ __global__ void indexAddLargeIndex(cuda::detail::TensorInfo<T, IndexType> dst,
                                    IndexType innerSize,
                                    int64_t dstAddDimSize,
                                    T alpha) {
+
   // We stride over the output including the indexed dimension
   // (totalSize), and calculate the destination index point based on that
   for (IndexType linearIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -417,7 +420,7 @@ __global__ void indexAddLargeIndex(cuda::detail::TensorInfo<T, IndexType> dst,
       cuda::detail::IndexToOffset<T, IndexType, SrcDim>::get(elementInSlice, src);
     srcOffset += srcIndex * src.strides[srcAddDim];
 
-    gpuAtomicAddNoReturn(&dst.data[dstOffset], src.data[srcOffset] * alpha);
+    fastAtomicAdd(dst.data, dstOffset, totalSize, static_cast<T>(src.data[srcOffset] * alpha), true);
   }
 }
 
@@ -518,8 +521,8 @@ Tensor& index_add_cuda_(Tensor & self, int64_t dim, const Tensor & index, const 
 #define SMALL_INDEX(TENSOR_TYPE, INDICES_TYPE, TYPE, SELF_DIM, SOURCE_DIM, IDX_DIM)  \
   indexAddSmallIndex<TENSOR_TYPE, INDICES_TYPE, TYPE, SELF_DIM, SOURCE_DIM, IDX_DIM> \
     <<<smallIndexGrid, smallIndexBlock, 0, stream>>>(                                \
-      selfInfo, sourceInfo, indexInfo,                                               \
-      selfAddDim, sourceAddDim, sliceSize, selfAddDimSize, alpha_value);             \
+      selfInfo, sourceInfo, indexInfo, selfAddDim, sourceAddDim,                     \
+      sourceTotalSize, sliceSize, selfAddDimSize, alpha_value);                      \
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 
 #define LARGE_INDEX(TENSOR_TYPE, INDICES_TYPE, TYPE,                        \
