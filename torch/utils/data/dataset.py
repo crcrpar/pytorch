@@ -127,7 +127,7 @@ class IterableDataset(Dataset[T_co], metaclass=_DataPipeMeta):
 
         >>> class MyIterableDataset(torch.utils.data.IterableDataset):
         ...     def __init__(self, start, end):
-        ...         super(MyIterableDataset).__init__()
+        ...         super().__init__()
         ...         assert end > start, "this example code only works with end >= start"
         ...         self.start = start
         ...         self.end = end
@@ -165,7 +165,7 @@ class IterableDataset(Dataset[T_co], metaclass=_DataPipeMeta):
 
         >>> class MyIterableDataset(torch.utils.data.IterableDataset):
         ...     def __init__(self, start, end):
-        ...         super(MyIterableDataset).__init__()
+        ...         super().__init__()
         ...         assert end > start, "this example code only works with end >= start"
         ...         self.start = start
         ...         self.end = end
