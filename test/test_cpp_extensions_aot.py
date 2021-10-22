@@ -82,6 +82,12 @@ class TestCppExtensionAOT(common.TestCase):
         # 2 * sigmoid(0) = 2 * 0.5 = 1
         self.assertEqual(z, torch.ones_like(z))
 
+    # note(mkozuki): Test for https://github.com/pytorch/pytorch/issues/67073
+    @unittest.skipIf(not TEST_CUDA, "CUDA not found")
+    def test_cublas_extension(self):
+        import torch_test_cpp_extension.cublas as cublas
+        cublas.a_cublas_function
+
     @unittest.skipIf(IS_WINDOWS, "Not available on Windows")
     def test_no_python_abi_suffix_sets_the_correct_library_name(self):
         # For this test, run_test.py will call `python setup.py install` in the
