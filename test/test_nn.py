@@ -15192,12 +15192,18 @@ class TestNNDeviceType(NNTestCase):
             x = torch.randn(shape, device="cuda", dtype=torch.float16, requires_grad=True)
             y = F.log_softmax(x, dim=-1, dtype=dtype)
             y.backward(y)
-            with torch.no_grad():
-                xx = x.cpu().requires_grad_()
-            yy = F.log_softmax(xx.float(), dim=-1).to(dtype)
-            yy.backward(yy)
-            self.assertEqual(y, yy)
-            self.assertEqual(x.grad, xx.grad)
+            for i in range(10):
+                if i == 9:
+                    end = shape[0]
+                else:
+                    end = (i + 1) * (shape[0] // 10)
+                start = i * shape[0] // 10
+                with torch.no_grad():
+                    xx = x[start:end].cpu().requires_grad_()
+                yy = F.log_softmax(xx.float(), dim=-1).to(dtype)
+                yy.backward(yy)
+                self.assertEqual(y[start:end], yy)
+                self.assertEqual(x[start:end].grad, xx.grad)
 
         run_test(1100000000, 2)  # Illegal memory access https://github.com/pytorch/pytorch/issues/52715
         run_test(2200000000, 1)  # invalid configuration argument https://github.com/pytorch/pytorch/issues/52716
