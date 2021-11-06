@@ -14,7 +14,7 @@ from torch.testing._internal.common_utils import TestCase, TEST_WITH_ROCM, TEST_
     skipCUDANonDefaultStreamIf, TEST_WITH_ASAN, TEST_WITH_UBSAN, TEST_WITH_TSAN, \
     IS_SANDCASTLE, IS_FBCODE, IS_REMOTE_GPU, DeterministicGuard, TEST_SKIP_NOARCH, \
     _TestParametrizer, dtype_name, TEST_WITH_MIOPEN_SUGGEST_NHWC
-from torch.testing._internal.common_cuda import _get_torch_cuda_version, TEST_CUSPARSE_GENERIC
+from torch.testing._internal.common_cuda import _get_torch_cuda_version, TEST_CUSPARSE_GENERIC, tf32_is_not_fp32, with_tf32_off
 from torch.testing._internal.common_dtype import get_all_dtypes
 
 # The implementation should be moved here as soon as the deprecation period is over.
@@ -715,12 +715,18 @@ class ops(_TestParametrizer):
                 assert self.allowed_dtypes is None, "ops(allowed_dtypes=[...]) and the dtypes decorator are incompatible"
                 assert self.opinfo_dtypes == OpDTypes.basic, "ops(dtypes=...) and the dtypes decorator are incompatible"
 
+            requires_separate_tf32_case = tf32_is_not_fp32() and device_cls.device_type == "cuda" and torch.float32 in dtypes
+            if requires_separate_tf32_case:
+                dtypes.add("torch.tf32")
+
             for dtype in dtypes:
                 # Construct the test name.
                 test_name = '{}{}_{}{}'.format(op.name.replace('.', '_'),
                                                '_' + op.variant_test_name if op.variant_test_name else '',
                                                device_cls.device_type,
                                                _dtype_test_suffix(dtype))
+                if requires_separate_tf32_case and dtype == "torch.tf32":
+                    dtype = torch.float32
 
                 # Construct parameter kwargs to pass to the test.
                 param_kwargs = {'op': op}
@@ -739,7 +745,8 @@ class ops(_TestParametrizer):
                     for decorator in op.get_decorators(
                             generic_cls.__name__, test.__name__, device_cls.device_type, dtype):
                         test_wrapper = decorator(test_wrapper)
-
+                    if requires_separate_tf32_case and dtype == torch.float32:
+                        test_wrapper = with_tf32_off(test_wrapper)
                     yield (test_wrapper, test_name, param_kwargs)
                 except Exception as ex:
                     # Provides an error message for debugging before rethrowing the exception

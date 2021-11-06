@@ -546,6 +546,7 @@ class OpInfo(object):
                  test_conjugated_samples=True,
                  test_neg_view=True,
                  assert_jit_shape_analysis=False,  # assert that jit shape analysis fully propagates shape
+                 separate_tf32_case=True,  # run with tf32 enabled as a separate testcase
                  ):
 
         dtypes_args = (dtypes, dtypesIfCPU, dtypesIfCUDA, dtypesIfROCM)
@@ -673,6 +674,7 @@ class OpInfo(object):
 
         self.supports_scripting = supports_scripting
         self.assert_jit_shape_analysis = assert_jit_shape_analysis
+        self.separate_tf32_case = separate_tf32_case
 
         self.test_conjugated_samples = test_conjugated_samples
         self.test_neg_view = test_neg_view
