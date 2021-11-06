@@ -21,6 +21,9 @@ CUDA9 = torch.version.cuda and torch.version.cuda.startswith('9.')
 SM53OrLater = torch.cuda.is_available() and torch.cuda.get_device_capability() >= (5, 3)
 SM60OrLater = torch.cuda.is_available() and torch.cuda.get_device_capability() >= (6, 0)
 SM80OrLater = torch.cuda.is_available() and torch.cuda.get_device_capability() >= (8, 0)
+DtypesSubjectToTF32 = (torch.float32, torch.complex64)
+OrigDtypeToTF32PostFixed = {d : str(d) + "withTF32" for d in DtypesSubjectToTF32}
+TF32DtypeNameToOrigDtype = {v: k for k, v in OrigDtypeToTF32PostFixed.items()}
 
 TEST_MAGMA = TEST_CUDA
 if TEST_CUDA:

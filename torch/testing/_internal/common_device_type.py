@@ -14,7 +14,8 @@ from torch.testing._internal.common_utils import TestCase, TEST_WITH_ROCM, TEST_
     skipCUDANonDefaultStreamIf, TEST_WITH_ASAN, TEST_WITH_UBSAN, TEST_WITH_TSAN, \
     IS_SANDCASTLE, IS_FBCODE, IS_REMOTE_GPU, DeterministicGuard, TEST_SKIP_NOARCH, \
     _TestParametrizer, dtype_name, TEST_WITH_MIOPEN_SUGGEST_NHWC
-from torch.testing._internal.common_cuda import _get_torch_cuda_version, TEST_CUSPARSE_GENERIC
+from torch.testing._internal.common_cuda import _get_torch_cuda_version, TEST_CUSPARSE_GENERIC, tf32_is_not_fp32, \
+    DtypesSubjectToTF32, with_tf32_off, TF32DtypeNameToOrigDtype, OrigDtypeToTF32PostFixed
 from torch.testing._internal.common_dtype import get_all_dtypes
 
 # The implementation should be moved here as soon as the deprecation period is over.
@@ -267,6 +268,17 @@ def _dtype_test_suffix(dtypes):
         return ''
 
 
+def _canonicalize_dtype(dtype):
+    """Returns `torch.dtype` and should enable TF32 or not."""
+    if isinstance(dtype, torch.dtype):
+        return dtype, False
+    elif dtype in TF32DtypeNameToOrigDtype:
+        return TF32DtypeNameToOrigDtype[dtype]
+    else:
+        raise RuntimeError(
+            f"Invalid type of `dtype` passed. Expect str or torch.dtype but {type(dtype)}")
+
+
 def _update_param_kwargs(param_kwargs, name, value):
     """ Adds a kwarg with the specified name and value to the param_kwargs dict. """
     if isinstance(value, list) or isinstance(value, tuple):
@@ -441,6 +453,17 @@ class CUDATestBase(DeviceTypeTestBase):
 
     def has_cudnn(self):
         return not self.no_cudnn
+
+    @classmethod
+    def _get_dtypes(cls, test):
+        dtypes = super()._get_dtypes(test)
+        if dtypes is None or not tf32_is_not_fp32():
+            return dtypes
+        for dtype in dtypes:
+            tf32_dtype = OrigDtypeToTF32PostFixed.get(dtype, None)
+            if tf32_dtype is not None:
+                dtypes.add(tf32_dtype)
+        return dtypes
 
     @classmethod
     def get_primary_device(cls):
@@ -673,7 +696,7 @@ class OpDTypes(Enum):
 #     operator's gradient formula supports
 #   OpDTypes.unsupported_backward - the test is instantiated for all dtypes the
 #     operator's gradient formula doesn't support
-#   OpDTypes.none - the test is instantied without any dtype. The test signature
+#   OpDTypes.none - the test is instantiated without any dtype. The test signature
 #     should not include a dtype kwarg in this case.
 #
 # These options allow tests to have considerable control over the dtypes
@@ -721,6 +744,9 @@ class ops(_TestParametrizer):
                                                '_' + op.variant_test_name if op.variant_test_name else '',
                                                device_cls.device_type,
                                                _dtype_test_suffix(dtype))
+                dtype, enable_tf32 = _canonicalize_dtype(dtype)
+                if enable_tf32 and op.disable_tf32:
+                    continue
 
                 # Construct parameter kwargs to pass to the test.
                 param_kwargs = {'op': op}
@@ -739,6 +765,8 @@ class ops(_TestParametrizer):
                     for decorator in op.get_decorators(
                             generic_cls.__name__, test.__name__, device_cls.device_type, dtype):
                         test_wrapper = decorator(test_wrapper)
+                        if not enable_tf32:
+                            test_wrapper = with_tf32_off(test_wrapper)
 
                     yield (test_wrapper, test_name, param_kwargs)
                 except Exception as ex:
