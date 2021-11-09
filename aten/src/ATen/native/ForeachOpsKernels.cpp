@@ -2,6 +2,10 @@
 #include <ATen/native/ForeachUtils.h>
 #include <c10/util/irange.h>
 
+#include <tuple>
+#include "Functions.h"
+#include "c10/core/Scalar.h"
+
 namespace at { namespace native {
 
 #define FOREACH_BINARY_OP_SCALAR(OP)                                                                      \
@@ -230,6 +234,20 @@ std::vector<Tensor> foreach_tensor_norm_slow(TensorList tensors, const Scalar& o
     result.emplace_back(at::linalg_vector_norm(t, ord));
   }
   return result;
+}
+
+Tensor multi_tensor_norm_slow(TensorList tensors, const Scalar& ord) {
+  check_foreach_api_restrictions(tensors);
+  auto ord_ = ord.toDouble();
+  auto result = std::accumulate(
+      tensors.begin(), tensors.end(),
+      at::zeros({}, tensors[0].options()),
+      [&](Tensor &result, const Tensor &curr_tensor) {
+          const auto &curr_norm = at::linalg_norm(curr_tensor, ord);
+          return result + ((ord_ == 0) ? curr_norm : at::pow(curr_norm, ord_));
+      }
+  );
+  return ord_ == 0 ? result : at::pow(result, 1 / ord_);
 }
 
 }} // namespace at::native
