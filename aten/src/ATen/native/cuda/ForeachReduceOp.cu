@@ -1,5 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
+#include <ATen/OpMathType.h>
 #include <ATen/cuda/DeviceUtils.cuh>
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/cuda/block_reduce.cuh>
@@ -8,6 +9,18 @@
 
 namespace at {
 namespace native {
+
+namespace {
+
+ScalarType toOpMathType(const ScalarType scalar_type) {
+  if (scalar_type == ScalarType::BFloat16 || scalar_type == ScalarType::Half) {
+    return ScalarType::Float;
+  } else {
+    return scalar_type;
+  }
+}
+
+}
 
 template<typename T, int NormType, int depth=1, int r_args_depth=1, int res_arg_index=0>
 struct LpNormFunctor {
@@ -121,7 +134,7 @@ std::vector<Tensor> foreach_tensor_norm_cuda(TensorList tensors, const Scalar& o
     }
   }
   const auto options = tensors[0].options();
-  auto output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, options.dtype(toOpmathType(tensors[0].scalar_type())));
+  auto output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, options.dtype(toOpMathType(tensors[0].scalar_type())));
   auto ret_per_tensor = at::empty({ntensors}, options);
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};

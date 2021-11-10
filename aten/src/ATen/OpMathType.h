@@ -14,12 +14,15 @@ template<> struct OpMathType<at::BFloat16> { using type = float; };
 template<typename T>
 using opmath_type = typename OpMathType<T>::type;
 
-ScalarType toOpmathType(const ScalarType type) {
-  if (type == at::ScalarType::BFloat16 || type == at::ScalarType::Half) {
-    return at::ScalarType::Float;
+namespace {
+
+ScalarType toOpMathType(const ScalarType scalar_type) {
+  if (scalar_type == ScalarType::BFloat16 || scalar_type == ScalarType::Half) {
+    return ScalarType::Float;
   } else {
-    return type;
+    return scalar_type;
   }
 }
 
+}
 } // namespace at
