@@ -18,7 +18,8 @@ struct LpNormFunctor {
       int chunk_size,
       TensorListMetadata<depth>& tl,
       opmath_t* output_per_tensor,
-      const int max_chunks_per_tensor
+      const int max_chunks_per_tensor,
+      const bool per_tensor
   ) {
     int tensor_loc = tl.block_to_tensor[blockIdx.x];
     int chunk_idx = tl.block_to_chunk[blockIdx.x];
@@ -75,7 +76,8 @@ template<typename T, int NormType, typename opmath_t = at::opmath_type<T>>
 __global__ void lpnorm_cleanup(
     opmath_t* output_per_tensor,
     T* ret_per_tensor,
-    int max_chunks_per_tensor) {
+    int max_chunks_per_tensor,
+    const bool per_tensor) {
   __shared__ opmath_t vals[512];
 
   opmath_t* output_this_tensor = output_per_tensor + blockIdx.x*max_chunks_per_tensor;
@@ -92,7 +94,8 @@ __global__ void lpnorm_cleanup(
 // note(mkozuki): Why excluding Int and Complex from fast path
 // - Int: at::norm does not support.
 // - Complex: __shfl_down_sync does not support complex and foreach does not support functions whose inputs dtypes and output dtype are different.
-std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, const Scalar& ord) {
+std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors, const Scalar &ord, const bool per_tensor) {
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   double p;
   if (ord.isIntegral(false)) {
     p = ord.to<int64_t>();
@@ -134,14 +137,16 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, cons
           tensor_lists,
           LpNormFunctor<scalar_t, 1>(),
           output_per_tensor.data_ptr<opmath_t>(),
-          max_chunks_per_tensor);
+          max_chunks_per_tensor,
+          per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         const at::cuda::OptionalCUDAGuard device_guard(device_of(output_per_tensor));
         auto stream = at::cuda::getCurrentCUDAStream();
         lpnorm_cleanup<scalar_t, 1><<<ntensors, 512, 0, stream>>>(
           output_per_tensor.data_ptr<opmath_t>(),
           ret_per_tensor.data_ptr<scalar_t>(),
-          max_chunks_per_tensor);
+          max_chunks_per_tensor,
+          per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
       });
   } else if (p == static_cast<double>(2)) {
@@ -152,14 +157,16 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, cons
           tensor_lists,
           LpNormFunctor<scalar_t, 2>(),
           output_per_tensor.data_ptr<opmath_t>(),
-          max_chunks_per_tensor);
+          max_chunks_per_tensor,
+          per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         const at::cuda::OptionalCUDAGuard device_guard(device_of(output_per_tensor));
         auto stream = at::cuda::getCurrentCUDAStream();
         lpnorm_cleanup<scalar_t, 2><<<ntensors, 512, 0, stream>>>(
           output_per_tensor.data_ptr<opmath_t>(),
           ret_per_tensor.data_ptr<scalar_t>(),
-          max_chunks_per_tensor);
+          max_chunks_per_tensor,
+          per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
       });
   } else {
@@ -172,6 +179,10 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, cons
     result.emplace_back(ret_per_tensor[i]);
   }
   return result;
+}
+
+std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, const Scalar &ord) {
+  return foreach_tensor_norm_per_tensor_cuda_impl(tensors, ord, /*per_tensor*/true);
 }
 
 } // namespace native
