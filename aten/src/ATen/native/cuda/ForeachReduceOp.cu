@@ -10,6 +10,11 @@
 namespace at {
 namespace native {
 
+enum class ForeachNormImplKind {
+  Global,
+  PerTensor,
+};
+
 template<typename T, int NormType, int depth=1, int r_args_depth=1, int res_arg_index=0>
 struct LpNormFunctor {
   static_assert(NormType == 1 || NormType == 2, "foreach_norm supports only L1 and L2 norm");
@@ -20,7 +25,7 @@ struct LpNormFunctor {
       opmath_t* output_per_tensor,
       opmath_t* output,
       const int max_chunks_per_tensor,
-      const bool per_tensor
+      const ForeachNormImplKind foreach_norm_impl_kind
   ) {
     int tensor_loc = tl.block_to_tensor[blockIdx.x];
     int chunk_idx = tl.block_to_chunk[blockIdx.x];
@@ -68,7 +73,16 @@ struct LpNormFunctor {
     auto final = at::native::cuda_utils::BlockReduceSum(val, s_vals);
 
     if (threadIdx.x == 0) {
-      output_per_tensor[(tl.start_tensor_this_launch + tensor_loc) * max_chunks_per_tensor + chunk_idx] = final;
+      switch (foreach_norm_impl_kind) {
+        case ForeachNormImplKind::PerTensor:
+          output_per_tensor[(tl.start_tensor_this_launch + tensor_loc) * max_chunks_per_tensor + chunk_idx] = final;
+          break;
+        case ForeachNormImplKind::Global:
+          output[blockIdx.x] += final;
+          break;
+        default:
+          break;
+      }
     }
   }
 };
@@ -80,24 +94,26 @@ __global__ void lpnorm_cleanup(
     opmath_t* output,
     T* ret,
     int max_chunks_per_tensor,
-    const bool per_tensor) {
+    const ForeachNormImplKind foreach_norm_impl_kind) {
   __shared__ opmath_t vals[512];
 
-  opmath_t* output_this_tensor = output_per_tensor + blockIdx.x*max_chunks_per_tensor;
-  opmath_t val = 0;
-  for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x) {
-    val += output_this_tensor[i];
-  }
-  opmath_t final = at::native::cuda_utils::BlockReduceSum<opmath_t>(val, vals);
-  if(threadIdx.x == 0) {
-    ret_per_tensor[blockIdx.x] = NormType == 1 ? final : ::sqrt(final);
+  if (foreach_norm_impl_kind == ForeachNormImplKind::PerTensor) {
+    opmath_t* output_this_tensor = output_per_tensor + blockIdx.x*max_chunks_per_tensor;
+    opmath_t val = 0;
+    for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x) {
+      val += output_this_tensor[i];
+    }
+    opmath_t final = at::native::cuda_utils::BlockReduceSum<opmath_t>(val, vals);
+    if(threadIdx.x == 0) {
+      ret_per_tensor[blockIdx.x] = NormType == 1 ? final : ::sqrt(final);
+    }
   }
 }
 
 // note(mkozuki): Why excluding Int and Complex from fast path
 // - Int: at::norm does not support.
 // - Complex: __shfl_down_sync does not support complex and foreach does not support functions whose inputs dtypes and output dtype are different.
-std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors, const Scalar &ord, const bool per_tensor) {
+std::vector<Tensor> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scalar &ord, const ForeachNormImplKind foreach_norm_impl_kind) {
   // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
   double p;
   if (ord.isIntegral(false)) {
@@ -129,10 +145,23 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
   }
   const auto options = tensors[0].options();
   const auto opmath_type_options = options.dtype(toOpMathType(tensors[0].scalar_type()));
-  auto output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, opmath_type_options);
-  auto ret_per_tensor = at::empty({ntensors}, options);
-  auto output = at::zeros({320}, opmath_type_options);
-  auto ret = at::empty({}, options);
+  Tensor output_per_tensor, ret_per_tensor, output, ret;
+  switch (foreach_norm_impl_kind) {
+    case ForeachNormImplKind::PerTensor:
+      output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, opmath_type_options);
+      ret_per_tensor = at::empty({ntensors}, options);
+      output = at::empty({}, opmath_type_options);
+      ret = at::empty({}, options);
+      break;
+    case ForeachNormImplKind::Global:
+      output_per_tensor = at::empty({}, opmath_type_options);
+      ret_per_tensor = at::empty({}, options);
+      output = at::zeros({320}, opmath_type_options);
+      ret = at::empty({}, options);
+      break;
+    default:
+      TORCH_CHECK(false, "_foreach_norm functions only support per_tensor and gross");
+  }
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
   if (p == static_cast<double>(1)) {
@@ -145,7 +174,7 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
           output_per_tensor.data_ptr<opmath_t>(),
           output.data_ptr<opmath_t>(),
           max_chunks_per_tensor,
-          per_tensor);
+          foreach_norm_impl_kind);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         const at::cuda::OptionalCUDAGuard device_guard(device_of(output_per_tensor));
         auto stream = at::cuda::getCurrentCUDAStream();
@@ -155,7 +184,7 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
           output.data_ptr<opmath_t>(),
           ret.data_ptr<scalar_t>(),
           max_chunks_per_tensor,
-          per_tensor);
+          foreach_norm_impl_kind);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
       });
   } else if (p == static_cast<double>(2)) {
@@ -168,7 +197,7 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
           output_per_tensor.data_ptr<opmath_t>(),
           output.data_ptr<opmath_t>(),
           max_chunks_per_tensor,
-          per_tensor);
+          foreach_norm_impl_kind);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         const at::cuda::OptionalCUDAGuard device_guard(device_of(output_per_tensor));
         auto stream = at::cuda::getCurrentCUDAStream();
@@ -178,7 +207,7 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
           output.data_ptr<opmath_t>(),
           ret.data_ptr<scalar_t>(),
           max_chunks_per_tensor,
-          per_tensor);
+          foreach_norm_impl_kind);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
       });
   } else {
@@ -194,7 +223,7 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
 }
 
 std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, const Scalar &ord) {
-  return foreach_tensor_norm_per_tensor_cuda_impl(tensors, ord, /*per_tensor*/true);
+  return foreach_tensor_norm_cuda_impl(tensors, ord, /*foreach_norm_impl_kind=*/ForeachNormImplKind::PerTensor);
 }
 
 } // namespace native
