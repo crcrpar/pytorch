@@ -43,8 +43,9 @@ _BOOL_SUB_ERR_MSG = "Subtraction, the `-` operator"
 
 class RegularFuncWrapper:
 
-    def __init__(self, func):
+    def __init__(self, func, *, can_handle_tensorlists=False):
         self.func = func
+        self.can_handle_tensorlists = can_handle_tensorlists
 
     def __call__(self, inputs, values=None, **kwargs):
         if values is not None:
@@ -55,6 +56,8 @@ class RegularFuncWrapper:
         if len(inputs) == 2 and isinstance(inputs[1], Number):
             # binary op with tensorlist and scalar.
             inputs[1] = [inputs[1] for _ in range(len(inputs[0]))]
+        if self.can_handle_tensorlists:
+            return self.func(*inputs, **kwargs)
         return [self.func(*i, **kwargs) for i in zip(*inputs)]
 
 
@@ -98,9 +101,9 @@ class TestForeach(TestCase):
     def _get_funcs(self, op, n_expected_cudaLaunchKernels):
         return (
             ForeachFuncWrapper(op.method_variant, n_expected_cudaLaunchKernels),
-            RegularFuncWrapper(op.ref),
+            RegularFuncWrapper(op.ref, can_handle_tensorlists=op.ref_can_handle_tensorlists),
             ForeachFuncWrapper(op.inplace_variant, n_expected_cudaLaunchKernels),
-            RegularFuncWrapper(op.ref_inplace),
+            RegularFuncWrapper(op.ref_inplace, can_handle_tensorlists=op.ref_can_handle_tensorlists),
         )
 
     def _binary_test(self, dtype, op, ref, inputs, is_fastpath, is_inplace, *, alpha=None):
@@ -430,13 +433,13 @@ class TestForeach(TestCase):
                 n_expected_cudaLaunchKernels = 3
             else:
                 n_expected_cudaLaunchKernels = N
-            inputs = op.sample_inputs(device, dtype, N, noncontiguous=False),
+            inputs = op.sample_inputs(device, dtype, N, noncontiguous=False, same_size=op.requires_same_size_inputs),
             self._reduce_test(op, inputs, ord, True, n_expected_cudaLaunchKernels)
 
     @ops(foreach_reduce_op_db)
     def test_reduce_slowpath(self, device, dtype, op):
         for N, ord in itertools.product(N_values, (0, 1, 2, -1, -2)):
-            inputs = op.sample_inputs(device, dtype, N, noncontiguous=True),
+            inputs = op.sample_inputs(device, dtype, N, noncontiguous=True, same_size=op.requires_same_size_inputs),
             self._reduce_test(op, inputs, ord, False, 1)
 
     @dtypes(*get_all_dtypes())

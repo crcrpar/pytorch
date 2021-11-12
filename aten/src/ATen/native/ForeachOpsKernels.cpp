@@ -1,6 +1,7 @@
 #include <ATen/ATen.h>
 #include <ATen/native/ForeachUtils.h>
 #include <c10/util/irange.h>
+#include <c10/core/ScalarType.h>
 
 namespace at { namespace native {
 
@@ -223,13 +224,29 @@ void foreach_tensor_zero_slow_(TensorList tensors) {
   }
 }
 
-std::vector<Tensor> foreach_tensor_norm_slow(TensorList tensors, const Scalar& ord) {
+std::vector<Tensor> foreach_tensor_norm_per_tensor_slow(TensorList tensors, const Scalar& ord) {
   check_foreach_api_restrictions(tensors);
   std::vector<Tensor> result;
   for (const auto& t : tensors) {
     result.emplace_back(at::linalg_vector_norm(t, ord));
   }
   return result;
+}
+
+Tensor foreach_tensor_norm_slow(TensorList tensors, const Scalar& ord) {
+  check_foreach_api_restrictions(tensors);
+  auto ord_ = ord.toDouble();
+  std::vector<Tensor> intermediate_results;
+  intermediate_results.reserve(tensors.size());
+  auto result = std::accumulate(
+      tensors.begin(), tensors.end(),
+      at::zeros({}, tensors[0].options().dtype(toValueType(tensors[0].scalar_type()))),
+      [&](Tensor &result, const Tensor &curr_tensor) {
+          const auto &curr_norm = at::linalg_vector_norm(curr_tensor, ord);
+          return result + ((ord_ == 0) ? curr_norm : at::pow(curr_norm, ord_));
+      }
+  );
+  return ord_ == 0 ? result : at::pow(result, 1 / ord_);
 }
 
 }} // namespace at::native
