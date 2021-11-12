@@ -18,6 +18,7 @@ struct LpNormFunctor {
       int chunk_size,
       TensorListMetadata<depth>& tl,
       opmath_t* output_per_tensor,
+      opmath_t* output,
       const int max_chunks_per_tensor,
       const bool per_tensor
   ) {
@@ -76,6 +77,8 @@ template<typename T, int NormType, typename opmath_t = at::opmath_type<T>>
 __global__ void lpnorm_cleanup(
     opmath_t* output_per_tensor,
     T* ret_per_tensor,
+    opmath_t* output,
+    T* ret,
     int max_chunks_per_tensor,
     const bool per_tensor) {
   __shared__ opmath_t vals[512];
@@ -125,8 +128,11 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
     }
   }
   const auto options = tensors[0].options();
-  auto output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, options.dtype(toOpMathType(tensors[0].scalar_type())));
+  const auto opmath_type_options = options.dtype(toOpMathType(tensors[0].scalar_type()));
+  auto output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, opmath_type_options);
   auto ret_per_tensor = at::empty({ntensors}, options);
+  auto output = at::zeros({320}, opmath_type_options);
+  auto ret = at::empty({}, options);
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
   if (p == static_cast<double>(1)) {
@@ -137,6 +143,7 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
           tensor_lists,
           LpNormFunctor<scalar_t, 1>(),
           output_per_tensor.data_ptr<opmath_t>(),
+          output.data_ptr<opmath_t>(),
           max_chunks_per_tensor,
           per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -145,6 +152,8 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
         lpnorm_cleanup<scalar_t, 1><<<ntensors, 512, 0, stream>>>(
           output_per_tensor.data_ptr<opmath_t>(),
           ret_per_tensor.data_ptr<scalar_t>(),
+          output.data_ptr<opmath_t>(),
+          ret.data_ptr<scalar_t>(),
           max_chunks_per_tensor,
           per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -157,6 +166,7 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
           tensor_lists,
           LpNormFunctor<scalar_t, 2>(),
           output_per_tensor.data_ptr<opmath_t>(),
+          output.data_ptr<opmath_t>(),
           max_chunks_per_tensor,
           per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -165,6 +175,8 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda_impl(TensorList tensors,
         lpnorm_cleanup<scalar_t, 2><<<ntensors, 512, 0, stream>>>(
           output_per_tensor.data_ptr<opmath_t>(),
           ret_per_tensor.data_ptr<scalar_t>(),
+          output.data_ptr<opmath_t>(),
+          ret.data_ptr<scalar_t>(),
           max_chunks_per_tensor,
           per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();

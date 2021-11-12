@@ -427,7 +427,8 @@ class TestForeach(TestCase):
     def test_reduce_fastpath(self, device, dtype, op):
         for N, ord in itertools.product(N_values, (0, 1, 2, -1, -2)):
             if ord in (1, 2) and dtype in torch.testing.get_all_fp_dtypes():
-                n_expected_cudaLaunchKernels = 3
+                # 2 at::zeros, 1 multi_tensor_apply, 1 cleanup
+                n_expected_cudaLaunchKernels = 4
             else:
                 n_expected_cudaLaunchKernels = N
             inputs = op.sample_inputs(device, dtype, N, noncontiguous=False),
