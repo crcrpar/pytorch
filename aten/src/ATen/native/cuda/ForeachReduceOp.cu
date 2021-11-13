@@ -155,7 +155,13 @@ ForeachNormResult foreach_tensor_norm_cuda_impl(TensorList tensors, const Scalar
   if (!can_use_fast_route(tensors) ||
       has_int_or_complex ||
       !(p == static_cast<double>(1) || p == static_cast<double>(2))) {
-    return {ret, foreach_tensor_norm_per_tensor_slow(tensors, ord)};
+    switch (foreach_norm_impl_kind) {
+      case ForeachNormImplKind::PerTensor:
+        return {ret, foreach_tensor_norm_per_tensor_slow(tensors, ord)};
+        break;
+      case ForeachNormImplKind::Global:
+        return {foreach_tensor_norm_slow(tensors, ord), std::vector<Tensor>()};
+    }
   }
 
   const int ntensors = tensors.size();
@@ -246,6 +252,10 @@ ForeachNormResult foreach_tensor_norm_cuda_impl(TensorList tensors, const Scalar
 
 std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, const Scalar &ord) {
   return foreach_tensor_norm_cuda_impl(tensors, ord, /*foreach_norm_impl_kind=*/ForeachNormImplKind::PerTensor).norm_per_tensor;
+}
+
+Tensor foreach_tensor_norm_cuda(TensorList tensors, const Scalar &ord) {
+  return foreach_tensor_norm_cuda_impl(tensors, ord, /*foreach_norm_impl_kind=*/ForeachNormImplKind::Global).norm;
 }
 
 } // namespace native

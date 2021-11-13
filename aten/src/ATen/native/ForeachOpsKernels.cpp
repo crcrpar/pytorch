@@ -232,4 +232,14 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_slow(TensorList tensors, cons
   return result;
 }
 
+Tensor foreach_tensor_norm_slow(TensorList tensors, const Scalar& ord) {
+  check_foreach_api_restrictions(tensors);
+  std::vector<Tensor> flattened_tensors;
+  flattened_tensors.reserve(tensors.size());
+  for (const auto &t : tensors) {
+    flattened_tensors.emplace_back(t.reshape({-1}));
+  }
+  return at::linalg_vector_norm(at::concat(flattened_tensors), ord);
+}
+
 }} // namespace at::native
