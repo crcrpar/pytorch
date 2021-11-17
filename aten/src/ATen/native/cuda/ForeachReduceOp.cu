@@ -213,5 +213,9 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, cons
   return foreach_tensor_norm_cuda_impl<ReturnType::PerTensor>(tensors, ord);
 }
 
+Tensor foreach_tensor_norm_cuda(TensorList tensors, const Scalar &ord) {
+  return at::zeros({}, tensors[0].options());
+}
+
 } // namespace native
 } // namespace at

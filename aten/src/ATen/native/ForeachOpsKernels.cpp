@@ -232,4 +232,8 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_slow(TensorList tensors, cons
   return result;
 }
 
+Tensor foreach_tensor_norm_slow(TensorList tensors, const Scalar &ord) {
+  return at::zeros({}, tensors[0].options());
+}
+
 }} // namespace at::native

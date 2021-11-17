@@ -43,8 +43,9 @@ _BOOL_SUB_ERR_MSG = "Subtraction, the `-` operator"
 
 class RegularFuncWrapper:
 
-    def __init__(self, func):
+    def __init__(self, func, *, returns_tensor):
         self.func = func
+        self.returns_tensor = returns_tensor
 
     def __call__(self, inputs, values=None, **kwargs):
         if values is not None:
@@ -55,7 +56,10 @@ class RegularFuncWrapper:
         if len(inputs) == 2 and isinstance(inputs[1], Number):
             # binary op with tensorlist and scalar.
             inputs[1] = [inputs[1] for _ in range(len(inputs[0]))]
-        return [self.func(*i, **kwargs) for i in zip(*inputs)]
+        if self.returns_tensor:
+            return self.func(*inputs, **kwargs)
+        else:
+            return [self.func(*i, **kwargs) for i in zip(*inputs)]
 
 
 class ForeachFuncWrapper:
@@ -98,9 +102,9 @@ class TestForeach(TestCase):
     def _get_funcs(self, op, n_expected_cudaLaunchKernels):
         return (
             ForeachFuncWrapper(op.method_variant, n_expected_cudaLaunchKernels),
-            RegularFuncWrapper(op.ref),
+            RegularFuncWrapper(op.ref, returns_tensor=op.returns_tensor),
             ForeachFuncWrapper(op.inplace_variant, n_expected_cudaLaunchKernels),
-            RegularFuncWrapper(op.ref_inplace),
+            RegularFuncWrapper(op.ref_inplace, returns_tensor=op.returns_tensor),
         )
 
     def _binary_test(self, dtype, op, ref, inputs, is_fastpath, is_inplace, *, alpha=None):
@@ -430,6 +434,8 @@ class TestForeach(TestCase):
                 n_expected_cudaLaunchKernels = 3
             else:
                 n_expected_cudaLaunchKernels = N
+            if "per_tensor" not in op.name:
+                n_expected_cudaLaunchKernels = 1
             inputs = op.sample_inputs(device, dtype, N, noncontiguous=False),
             self._reduce_test(op, inputs, ord, True, n_expected_cudaLaunchKernels)
 
@@ -437,7 +443,7 @@ class TestForeach(TestCase):
     def test_reduce_slowpath(self, device, dtype, op):
         for N, ord in itertools.product(N_values, (0, 1, 2, -1, -2)):
             inputs = op.sample_inputs(device, dtype, N, noncontiguous=True),
-            self._reduce_test(op, inputs, ord, False, 1)
+            self._reduce_test(op, inputs, ord, False, 1 if "per_tensor" in op.name else 0)
 
     @dtypes(*get_all_dtypes())
     def test_add_scalar_with_empty_list_and_empty_tensor(self, device, dtype):
@@ -666,6 +672,8 @@ class TestForeach(TestCase):
     @dtypes(torch.half, torch.bfloat16)
     @ops(foreach_reduce_op_db)
     def test_foreach_l2_large_value_input(self, device, dtype, op):
+        if "per_tensor" not in op.name:
+            self.skipTest(f"This test is for `_foreach_norm_per_tensor` but {op.name}")
         ord, N = 2, 10
         max_value = torch.finfo(dtype).max
         scaler = torch.tensor([max_value]).sqrt().to(device=device, dtype=dtype)

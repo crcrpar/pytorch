@@ -4242,6 +4242,7 @@ class ForeachFuncInfo(OpInfo):
                  safe_casts_outputs=True,
                  supports_alpha_param=False,
                  sample_inputs_func=sample_inputs_foreach,
+                 returns_tensor=False,
                  **kwargs):
         super().__init__(
             "_foreach_" + name,
@@ -4260,9 +4261,16 @@ class ForeachFuncInfo(OpInfo):
         self.ref = torch_ref_method
         self.ref_inplace = torch_ref_inplace
         self.supports_alpha_param = supports_alpha_param
+        self.returns_tensor = returns_tensor
 
         if name == "norm_per_tensor":
             self.ref = torch.linalg.vector_norm
+        if name == "norm":
+            def ref_for_foreach_norm(tensors, ord):
+                # giant_tensor = torch.cat([t.view(-1) for t in tensors])
+                # return torch.linalg.vector_norm(giant_tensor, ord)
+                return torch.zeros((), device=tensors[0].device, dtype=tensors[0].dtype)
+            self.ref = ref_for_foreach_norm
 
 
 def sample_inputs_linalg_cholesky_inverse(op_info, device, dtype, requires_grad=False):
@@ -6896,6 +6904,12 @@ foreach_reduce_op_db: List[ForeachFuncInfo] = [
         "norm_per_tensor",
         dtypesIfCPU=floating_and_complex_types_and(torch.float16, torch.bfloat16),
         dtypesIfCUDA=floating_and_complex_types_and(torch.float16, torch.bfloat16),
+    ),
+    ForeachFuncInfo(
+        "norm",
+        dtypesIfCPU=floating_and_complex_types_and(torch.float16, torch.bfloat16),
+        dtypesIfCUDA=floating_and_complex_types_and(torch.float16, torch.bfloat16),
+        returns_tensor=True,
     ),
 ]
 
