@@ -432,10 +432,12 @@ class TestForeach(TestCase):
         for N, ord in itertools.product(N_values, (0, 1, 2, -1, -2)):
             if ord in (1, 2) and dtype in torch.testing.get_all_fp_dtypes():
                 n_expected_cudaLaunchKernels = 3
+                if "per_tensor" not in op.name:
+                    n_expected_cudaLaunchKernels = 4
             else:
                 n_expected_cudaLaunchKernels = N
-            if "per_tensor" not in op.name:
-                n_expected_cudaLaunchKernels = 1
+                if "per_tensor" not in op.name:
+                    n_expected_cudaLaunchKernels = 1
             inputs = op.sample_inputs(device, dtype, N, noncontiguous=False),
             self._reduce_test(op, inputs, ord, True, n_expected_cudaLaunchKernels)
 

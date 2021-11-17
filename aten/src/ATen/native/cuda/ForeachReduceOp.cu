@@ -10,13 +10,18 @@
 namespace at {
 namespace native {
 
-enum class ReturnType { PerTensor, Gross };
+enum class CalcNormType { PerTensor, GlobalNorm };
+#define check_calc_norm_type(X) static_assert((X) == 1 || (X) == 2, "foreach_norm supports only L1 and L2")
 
-#define check_norm_type(X) static_assert((X) == 1 || (X) == 2, "foreach_norm supports only L1 and L2")
+template<CalcNormType cnt> struct RetType { using value = Tensor; };
+template<> struct RetType<CalcNormType::PerTensor> { using value = std::vector<Tensor>; };
+
+template<CalcNormType cnt> using ret_type = typename RetType<cnt>::value;
+
 
 template<typename T, int NormType>
 struct NormElemCalcFunctor {
-  check_norm_type(NormType);
+  check_calc_norm_type(NormType);
   using opmath_t = at::opmath_type<T>;
   __device__ __forceinline__ opmath_t operator()(const T x) { return ::abs(x); };
 };
@@ -27,9 +32,9 @@ struct NormElemCalcFunctor<T, 2> {
   __device__ __forceinline__ opmath_t operator()(const T x) { return x * x; }
 };
 
-template<typename T, int NormType, ReturnType RT, int depth=1, int r_args_depth=1, int res_arg_index=0>
+template<typename T, int NormType, CalcNormType RT, int depth=1, int r_args_depth=1, int res_arg_index=0>
 struct LpNormFunctor {
-  check_norm_type(NormType);
+  check_calc_norm_type(NormType);
   using opmath_t = typename at::opmath_type<T>;
   __device__ __forceinline__ void operator() (
       int chunk_size,
@@ -83,7 +88,7 @@ struct LpNormFunctor {
     const auto final = at::native::cuda_utils::BlockReduceSum<opmath_t>(val, s_vals);
 
     if (threadIdx.x == 0) {
-      if (RT == ReturnType::PerTensor) {
+      if (RT == CalcNormType::PerTensor) {
         output_per_tensor[(tl.start_tensor_this_launch + tensor_loc) * max_chunks_per_tensor + chunk_idx] = final;
       }
     }
@@ -92,7 +97,7 @@ struct LpNormFunctor {
 
 template<typename T, int NormType>
 struct NormCleanupFunctor {
-  check_norm_type(NormType);
+  check_calc_norm_type(NormType);
   using opmath_t = at::opmath_type<T>;
   __device__ __forceinline__ T operator()(const opmath_t x) { return static_cast<T>(x); };
 };
@@ -103,13 +108,13 @@ struct NormCleanupFunctor<T, 2> {
   __device__ __forceinline__ T operator()(const opmath_t x) { return static_cast<T>(::sqrt(x)); };
 };
 
-template<typename T, int NormType, ReturnType RT, typename opmath_t = at::opmath_type<T>>
+template<typename T, int NormType, CalcNormType RT, typename opmath_t = at::opmath_type<T>>
 __global__ void lpnorm_cleanup(
     opmath_t* output_per_tensor,
     T* ret_per_tensor,
     int max_chunks_per_tensor) {
   __shared__ opmath_t vals[512];
-  if (RT == ReturnType::PerTensor) {
+  if (RT == CalcNormType::PerTensor) {
     opmath_t* output_this_tensor = output_per_tensor + blockIdx.x*max_chunks_per_tensor;
     opmath_t val = 0;
     for (int i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x) {
@@ -121,13 +126,53 @@ __global__ void lpnorm_cleanup(
     }
   }
 }
-#undef check_norm_type
+
+template<CalcNormType RT>
+ret_type<RT> foreach_norm_slow_path(TensorList tensors, const Scalar &ord) {
+  return foreach_tensor_norm_slow(tensors, ord);
+}
+
+template<>
+ret_type<CalcNormType::PerTensor> foreach_norm_slow_path<CalcNormType::PerTensor>(TensorList tensors, const Scalar &ord) {
+  return foreach_tensor_norm_per_tensor_slow(tensors, ord);
+}
+
+template<CalcNormType RT>
+ret_type<RT> choose_return_value(const Tensor &ret, const Tensor &ret_per_tensor, const int ntensors) {
+  return ret;
+}
+
+template<>
+ret_type<CalcNormType::PerTensor> choose_return_value<CalcNormType::PerTensor>(const Tensor &ret, const Tensor &ret_per_tensor, const int ntensors) {
+  std::vector<Tensor> result;
+  result.reserve(ntensors);
+  for (const auto &i : c10::irange(ntensors)) {
+    result.emplace_back(ret_per_tensor[i]);
+  }
+  return result;
+}
+
+#undef check_calc_norm_type
+
+template<CalcNormType RT>
+void prepare_tensors(const int ntensors, const int max_chunks_per_tensor, const TensorOptions options, const ScalarType scalar_type, Tensor &output, Tensor &ret, Tensor &output_per_tensor, Tensor &ret_per_tensor) {
+  const auto opmath_type_options = options.dtype(toOpMathType(scalar_type));
+  output = at::empty({320}, opmath_type_options);
+  ret = at::zeros({}, options);
+}
+
+template<>
+void prepare_tensors<CalcNormType::PerTensor>(const int ntensors, const int max_chunks_per_tensor, const TensorOptions options, const ScalarType scalar_type, Tensor &output, Tensor &ret, Tensor &output_per_tensor, Tensor &ret_per_tensor) {
+  const auto opmath_type_options = options.dtype(toOpMathType(scalar_type));
+  output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, opmath_type_options);
+  ret_per_tensor = at::empty({ntensors}, options);
+}
 
 // note(mkozuki): Why excluding Int and Complex from fast path
 // - Int: at::norm does not support.
 // - Complex: __shfl_down_sync does not support complex and foreach does not support functions whose inputs dtypes and output dtype are different.
-template<ReturnType RT>
-std::vector<Tensor> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scalar& ord) {
+template<CalcNormType RT>
+ret_type<RT> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scalar& ord) {
   double p;
   if (ord.isIntegral(false)) {
     p = ord.to<int64_t>();
@@ -144,7 +189,7 @@ std::vector<Tensor> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scal
   if (!can_use_fast_route(tensors) ||
       has_int_or_complex ||
       !(p == static_cast<double>(1) || p == static_cast<double>(2))) {
-    return foreach_tensor_norm_per_tensor_slow(tensors, ord);
+    return foreach_norm_slow_path<RT>(tensors, ord);
   }
 
   const int ntensors = tensors.size();
@@ -156,11 +201,11 @@ std::vector<Tensor> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scal
       max_chunks_per_tensor = max_chunks_this_tensor;
     }
   }
-  const auto options = tensors[0].options();
-  auto output_per_tensor = at::zeros({ntensors*max_chunks_per_tensor}, options.dtype(toOpMathType(tensors[0].scalar_type())));
-  auto ret_per_tensor = at::empty({ntensors}, options);
+  Tensor output, ret, output_per_tensor, ret_per_tensor;
+  prepare_tensors<RT>(ntensors, max_chunks_per_tensor, tensors[0].options(), tensors[0].scalar_type(), output, ret, output_per_tensor, ret_per_tensor);
 
   auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
+  // todo (mkozuki): refactor this if else block.
   if (p == static_cast<double>(1)) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, tensor_lists[0][0].scalar_type(), "foreach_tensor_norm_cuda", [&]() {
@@ -168,14 +213,14 @@ std::vector<Tensor> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scal
         multi_tensor_apply<1>(
           tensor_lists,
           LpNormFunctor<scalar_t, 1, RT>(),
-          output_per_tensor.data_ptr<opmath_t>(),
+          RT == CalcNormType::PerTensor ? output_per_tensor.data_ptr<opmath_t>() : nullptr,
           max_chunks_per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         const at::cuda::OptionalCUDAGuard device_guard(device_of(output_per_tensor));
         auto stream = at::cuda::getCurrentCUDAStream();
         lpnorm_cleanup<scalar_t, 1, RT><<<ntensors, 512, 0, stream>>>(
-          output_per_tensor.data_ptr<opmath_t>(),
-          ret_per_tensor.data_ptr<scalar_t>(),
+          RT == CalcNormType::PerTensor ? output_per_tensor.data_ptr<opmath_t>() : nullptr,
+          RT == CalcNormType::PerTensor ? ret_per_tensor.data_ptr<scalar_t>() : nullptr,
           max_chunks_per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
       });
@@ -186,14 +231,14 @@ std::vector<Tensor> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scal
         multi_tensor_apply<1>(
           tensor_lists,
           LpNormFunctor<scalar_t, 2, RT>(),
-          output_per_tensor.data_ptr<opmath_t>(),
+          RT == CalcNormType::PerTensor ? output_per_tensor.data_ptr<opmath_t>() : nullptr,
           max_chunks_per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
         const at::cuda::OptionalCUDAGuard device_guard(device_of(output_per_tensor));
         auto stream = at::cuda::getCurrentCUDAStream();
         lpnorm_cleanup<scalar_t, 2, RT><<<ntensors, 512, 0, stream>>>(
-          output_per_tensor.data_ptr<opmath_t>(),
-          ret_per_tensor.data_ptr<scalar_t>(),
+          RT == CalcNormType::PerTensor ? output_per_tensor.data_ptr<opmath_t>() : nullptr,
+          RT == CalcNormType::PerTensor ? ret_per_tensor.data_ptr<scalar_t>() : nullptr,
           max_chunks_per_tensor);
         C10_CUDA_KERNEL_LAUNCH_CHECK();
       });
@@ -201,20 +246,22 @@ std::vector<Tensor> foreach_tensor_norm_cuda_impl(TensorList tensors, const Scal
     AT_ERROR("foreach_tensor_norm_cuda fast path got unexpected ord value: ", p);
   }
 
-  std::vector<Tensor> result;
-  result.reserve(ntensors);
-  for (const auto& i : c10::irange(ntensors)) {
-    result.emplace_back(ret_per_tensor[i]);
-  }
-  return result;
+  // std::vector<Tensor> result;
+  // result.reserve(ntensors);
+  // for (const auto& i : c10::irange(ntensors)) {
+  //   result.emplace_back(ret_per_tensor[i]);
+  // }
+  // return result;
+  return choose_return_value<RT>(ret, ret_per_tensor, ntensors);
 }
 
-std::vector<Tensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, const Scalar &ord) {
-  return foreach_tensor_norm_cuda_impl<ReturnType::PerTensor>(tensors, ord);
+ret_type<CalcNormType::PerTensor> foreach_tensor_norm_per_tensor_cuda(TensorList tensors, const Scalar &ord) {
+  return foreach_tensor_norm_cuda_impl<CalcNormType::PerTensor>(tensors, ord);
 }
 
-Tensor foreach_tensor_norm_cuda(TensorList tensors, const Scalar &ord) {
-  return at::zeros({}, tensors[0].options());
+ret_type<CalcNormType::GlobalNorm> foreach_tensor_norm_cuda(TensorList tensors, const Scalar &ord) {
+  // return at::zeros({}, tensors[0].options());
+  return foreach_tensor_norm_cuda_impl<CalcNormType::GlobalNorm>(tensors, ord);
 }
 
 } // namespace native
