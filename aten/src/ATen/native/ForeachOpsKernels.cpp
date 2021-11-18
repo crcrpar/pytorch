@@ -233,7 +233,12 @@ std::vector<Tensor> foreach_tensor_norm_per_tensor_slow(TensorList tensors, cons
 }
 
 Tensor foreach_tensor_norm_slow(TensorList tensors, const Scalar &ord) {
-  return at::zeros({}, tensors[0].options());
+  std::vector<Tensor> flattend_tensors;
+  flattend_tensors.reserve(tensors.size());
+  for (const auto &t : tensors) {
+    flattend_tensors.push_back(t.view({t.numel()}));
+  }
+  return at::linalg_vector_norm(at::cat(TensorList{flattend_tensors}), ord);
 }
 
 }} // namespace at::native
