@@ -4266,10 +4266,11 @@ class ForeachFuncInfo(OpInfo):
         if name == "norm_per_tensor":
             self.ref = torch.linalg.vector_norm
         if name == "norm":
+
             def ref_for_foreach_norm(tensors, ord):
-                # giant_tensor = torch.cat([t.view(-1) for t in tensors])
-                # return torch.linalg.vector_norm(giant_tensor, ord)
-                return torch.zeros((), device=tensors[0].device, dtype=tensors[0].dtype)
+                giant_tensor = torch.cat([t.view(-1) for t in tensors])
+                return torch.linalg.vector_norm(giant_tensor, ord)
+
             self.ref = ref_for_foreach_norm
 
 
