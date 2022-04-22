@@ -167,7 +167,7 @@ void fused_mode(
   // The number of blocks is the number of slices that we need to calculate
   // the mode for. Each block is responsible for computing a single mode
   dim3 grid;
-  getGridFromTiles(slices, grid);
+  TORCH_INTERNAL_ASSERT(getGridFromTiles(slices, grid), "Too many slices to sort");
 
   // The blocksize is two elements per thread, rounded up to the nearest power
   // of 2
