@@ -1035,6 +1035,8 @@ if __name__ == '__main__':
                 'include/torch/csrc/distributed/c10d/exception.h',
                 'include/torch/csrc/jit/*.h',
                 'include/torch/csrc/jit/backends/*.h',
+                'include/torch/csrc/jit/codegen/cuda/*.h',
+                'include/torch/csrc/jit/codegen/cuda/ops/*.h',
                 'include/torch/csrc/jit/generated/*.h',
                 'include/torch/csrc/jit/passes/*.h',
                 'include/torch/csrc/jit/passes/quantization/*.h',
