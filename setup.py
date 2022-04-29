@@ -983,6 +983,7 @@ if __name__ == '__main__':
                 'include/ATen/native/hip/*.cuh',
                 'include/ATen/native/quantized/*.h',
                 'include/ATen/native/quantized/cpu/*.h',
+                'include/ATen/native/utils/*.h',
                 'include/ATen/quantized/*.h',
                 'include/caffe2/utils/*.h',
                 'include/caffe2/utils/**/*.h',
