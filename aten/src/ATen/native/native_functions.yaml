@@ -12985,3 +12985,10 @@
   device_check: NoCheck
   python_module: special
   variants: function
+
+# Fused Optimizer Kernels
+- func: _fused_adam(Tensor(a!)[] params, Tensor(b!)[] grads, Tensor(c!)[] exp_avgs, Tensor(d!)[] exp_avg_sqs, Tensor(e!)[] max_exp_avg_sqs, Tensor(f!)[] state_steps, Tensor? inverse_grad_scaler, Tensor lr, float beta1, float beta2, float weight_decay, float eps, bool maximize) -> ()
+  device_check: NoCheck
+  variants: function
+  dispatch:
+    CUDA: _fused_adam_cuda

@@ -74,7 +74,7 @@ class Adam(Optimizer):
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
                  weight_decay=0, amsgrad=False, *, foreach: Optional[bool] = None,
-                 maximize: bool = False, capturable: bool = False):
+                 maximize: bool = False, capturable: bool = False, fused: bool = False):
         if not 0.0 <= lr:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if not 0.0 <= eps:
@@ -87,8 +87,20 @@ class Adam(Optimizer):
             raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
         defaults = dict(lr=lr, betas=betas, eps=eps,
                         weight_decay=weight_decay, amsgrad=amsgrad,
-                        maximize=maximize, foreach=foreach, capturable=capturable)
+                        maximize=maximize, foreach=foreach, capturable=capturable, fused=fused)
         super(Adam, self).__init__(params, defaults)
+
+        if fused:
+            self._step_supports_amp_scaling = True
+            for pg in self.param_groups:
+                dev = pg['params'][0].device
+                params_on_same_device = all(p.device == dev for p in pg['params'])
+                if not params_on_same_device:
+                    raise RuntimeError("fused adam require prams in the same group to be on the same device")
+                lr = pg['lr']
+                if not torch.is_tensor(lr):
+                    lr = torch.tensor(lr)
+                pg['lr'] = lr.to(dtype=torch.float, device=dev)
 
     def __setstate__(self, state):
         super().__setstate__(state)
@@ -97,19 +109,24 @@ class Adam(Optimizer):
             group.setdefault('maximize', False)
             group.setdefault('foreach', None)
             group.setdefault('capturable', False)
+            group.setdefault('fused', False)
         state_values = list(self.state.values())
         step_is_tensor = (len(state_values) != 0) and torch.is_tensor(state_values[0]['step'])
         if not step_is_tensor:
             for s in state_values:
                 s['step'] = torch.tensor(float(s['step']))
+        if group['fused'] and not torch.is_tensor(self.param_groups[0]['lr']):
+            for pg in self.param_groups:
+                pg['lr'] = torch.tensor(float(pg['lr']))
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure=None, grad_scaler=None):
         """Performs a single optimization step.
 
         Args:
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
+            grad_scaler (torch.cuda.amp.GradScaler, optional):
         """
         self._cuda_graph_capture_health_check()
 
@@ -137,8 +154,9 @@ class Adam(Optimizer):
                     state = self.state[p]
                     # Lazy state initialization
                     if len(state) == 0:
-                        state['step'] = torch.zeros((1,), dtype=torch.float, device=p.device) \
-                            if self.defaults['capturable'] else torch.tensor(0.)
+                        state['step'] = torch.tensor(0.)
+                        if self.defaults['capturable'] or self.defaults['fused']:
+                            state['step'] = torch.zeros((1,), dtype=torch.float, device=p.device)
                         # Exponential moving average of gradient values
                         state['exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
                         # Exponential moving average of squared gradient values
@@ -155,6 +173,10 @@ class Adam(Optimizer):
 
                     state_steps.append(state['step'])
 
+            inverse_grad_scaler = None
+            if self.defaults['fused'] and grad_scaler is not None:
+                inverse_grad_scaler = grad_scaler._get_scale_async().double().reciprocal().float()
+
             adam(params_with_grad,
                  grads,
                  exp_avgs,
@@ -169,7 +191,9 @@ class Adam(Optimizer):
                  eps=group['eps'],
                  maximize=group['maximize'],
                  foreach=group['foreach'],
-                 capturable=group['capturable'])
+                 capturable=group['capturable'],
+                 fused=group['fused'],
+                 inverse_grad_scaler=inverse_grad_scaler)
 
         return loss
 
@@ -184,6 +208,7 @@ def adam(params: List[Tensor],
          # setting this as kwarg for now as functional API is compiled by torch/distributed/optim
          foreach: bool = None,
          capturable: bool = False,
+         fused: bool = False,
          *,
          amsgrad: bool,
          beta1: float,
@@ -191,7 +216,8 @@ def adam(params: List[Tensor],
          lr: float,
          weight_decay: float,
          eps: float,
-         maximize: bool):
+         maximize: bool,
+         inverse_grad_scaler: Optional[Tensor]):
     r"""Functional API that performs Adam algorithm computation.
     See :class:`~torch.optim.Adam` for details.
     """
@@ -203,11 +229,16 @@ def adam(params: List[Tensor],
         # Placeholder for more complex foreach logic to be added when value is not set
         foreach = False
 
-    if foreach and torch.jit.is_scripting():
-        raise RuntimeError('torch.jit.script not supported with foreach optimizers')
+    if torch.jit.is_scripting():
+        if foreach:
+            raise RuntimeError('torch.jit.script not supported with foreach optimizers')
+        if fused:
+            raise RuntimeError('torch.jit.script not supported with fused optimizers')
 
     if foreach and not torch.jit.is_scripting():
         func = _multi_tensor_adam
+    elif fused and not torch.jit.is_scripting() not amsgrad:
+        func = _fused_adam
     else:
         func = _single_tensor_adam
 
@@ -224,7 +255,8 @@ def adam(params: List[Tensor],
          weight_decay=weight_decay,
          eps=eps,
          maximize=maximize,
-         capturable=capturable)
+         capturable=capturable,
+         inverse_grad_scaler=inverse_grad_scaler)
 
 
 def _single_tensor_adam(params: List[Tensor],
@@ -241,7 +273,8 @@ def _single_tensor_adam(params: List[Tensor],
                         weight_decay: float,
                         eps: float,
                         maximize: bool,
-                        capturable: bool):
+                        capturable: bool,
+                        inverse_grad_scaler: Optional[Tensor]):
 
     for i, param in enumerate(params):
 
@@ -322,7 +355,8 @@ def _multi_tensor_adam(params: List[Tensor],
                        weight_decay: float,
                        eps: float,
                        maximize: bool,
-                       capturable: bool):
+                       capturable: bool,
+                       inverse_grad_scaler: Optional[Tensor]):
     if len(params) == 0:
         return
 
@@ -405,3 +439,43 @@ def _multi_tensor_adam(params: List[Tensor],
             denom = torch._foreach_add(exp_avg_sq_sqrt, eps)
 
         torch._foreach_addcdiv_(params, exp_avgs, denom, step_size)
+
+
+def _fused_adam(params: List[Tensor],
+                grads: List[Tensor],
+                exp_avgs: List[Tensor],
+                exp_avg_sqs: List[Tensor],
+                max_exp_avgs_sqs: List[Tensor],
+                state_steps: List[Tensor],
+                *,
+                amsgrad: bool,
+                beta1: float,
+                beta2: float,
+                lr: float,
+                weight_decay: float,
+                eps: float,
+                maximize: bool,
+                capturable: bool,
+                inverse_grad_scaler: Optional[Tensor]):
+    if len(params) == 0:
+        return
+
+    keys = params[0].device, params[0].dtype
+    if not all(keys == (p.device, p.dtype) for p in params):
+        raise RuntimeError("fused adam requires all the params of the same param_group to have the same dtype and be on the same device")
+
+    torch._fused_adam(
+        params,
+        grads,
+        exp_avgs,
+        exp_avg_sqs,
+        max_exp_avgs_sqs,
+        state_steps,
+        inverse_grad_scaler,
+        lr,
+        beta1,
+        beta2,
+        weight_decay,
+        eps,
+        maximize,
+    )

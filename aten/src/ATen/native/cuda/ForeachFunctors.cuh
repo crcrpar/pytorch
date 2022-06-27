@@ -47,27 +47,27 @@ __device__ bool init_args(
         return all_aligned;
 }
 
-template<int depth, typename T>
-__device__ void load_args(T r_args[][kILP], T** args, int i_start, int chunk_size, int n) {
+template<int depth, typename T1, typename T2=T1>
+__device__ void load_args(T1 r_args[][kILP], T2** args, int i_start, int chunk_size, int n) {
 #pragma unroll
     for(int ii = 0; ii < kILP; ii++) {
         int i = i_start + threadIdx.x + ii * blockDim.x;
         for (int r_index = 0; r_index < depth; r_index++) {
             r_args[r_index][ii] = 0;
             if(i < n && i < chunk_size) {
-                r_args[r_index][ii] = args[r_index][i];
+                r_args[r_index][ii] = static_cast<T1>(args[r_index][i]);
             }
         }
     }
 }
 
-template<typename T>
-__device__ void store_args(T* dst, T* src, int i_start, int chunk_size, int n) {
+template<typename dst_type, typename src_type=dst_type>
+__device__ void store_args(dst_type* dst, src_type* src, int i_start, int chunk_size, int n) {
 #pragma unroll
     for(int ii = 0; ii < kILP; ii++) {
         int i = i_start + threadIdx.x + ii * blockDim.x;
         if(i < n && i < chunk_size)
-            dst[i] = src[ii];
+            dst[i] = static_cast<dst_type>(src[ii]);
     }
 }
 
