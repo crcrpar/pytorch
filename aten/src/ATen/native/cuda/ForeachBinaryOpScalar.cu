@@ -11,6 +11,7 @@
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
 #include <ATen/ops/_foreach_sub_native.h>
+#include <ATen/ops/_foreach_pow_native.h>
 
 #include <ATen/ops/empty_like_native.h>
 #endif
@@ -80,6 +81,7 @@ std::vector<Tensor> foreach_tensor_##NAME##_scalar_kernel_cuda(TensorList tensor
 
 FOREACH_BINARY_OP_SCALAR(add, std::plus, false);
 FOREACH_BINARY_OP_SCALAR(mul, std::multiplies, false);
+FOREACH_BINARY_OP_SCALAR(pow, std::pow, false);
 
 // In the case of division, integer inputs will result in float.
 // Currently multi tensor apply can only return result of the same type as input.

@@ -11,6 +11,7 @@
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
 #include <ATen/ops/_foreach_sub_native.h>
+#include <ATen/ops/_foreach_pow_native.h>
 
 #include <ATen/ops/empty_like_native.h>
 #endif
@@ -82,6 +83,7 @@ std::vector<Tensor> foreach_tensor_##NAME##_scalarlist_kernel_cuda(TensorList te
 FOREACH_BINARY_OP_SCALARLIST(add, std::plus, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALARLIST(mul, std::multiplies, /*div_op*/ false);
 FOREACH_BINARY_OP_SCALARLIST(div, std::divides, /*div_op*/ true);
+FOREACH_BINARY_OP_SCALARLIST(pow, std::pow, /*div_op*/ false);
 
 // This does not use FOREACH_BINARY_OP_SCALARLIST because
 // In the case of subtraction, we dont allow scalar to be boolean following the torch.sub logic

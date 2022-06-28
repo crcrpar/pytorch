@@ -10,6 +10,7 @@
 #include <ATen/ops/_foreach_div_native.h>
 #include <ATen/ops/_foreach_mul_native.h>
 #include <ATen/ops/_foreach_sub_native.h>
+#include <ATen/ops/_foreach_pow_native.h>
 
 #include <ATen/ops/empty_like_native.h>
 #endif
@@ -103,5 +104,6 @@ FOREACH_BINARY_OP_LIST_ALPHA(add, std::plus);
 FOREACH_BINARY_OP_LIST_ALPHA(sub, std::minus);
 FOREACH_BINARY_OP_LIST(mul, std::multiplies, /*division_op*/ false);
 FOREACH_BINARY_OP_LIST(div, std::divides, /*division_op*/ true);
+FOREACH_BINARY_OP_LIST(pow, std::pow, /*division_op*/ false);
 
 }} // namespace at::native

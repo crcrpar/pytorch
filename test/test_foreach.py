@@ -166,6 +166,7 @@ class TestForeach(TestCase):
         self._binary_test(
             dtype, inplace_op, inplace_ref, inputs, is_fastpath and disable_fastpath, is_inplace=True)
 
+    # TODO(crcrpar): Add a path for _foreach_pow with broadcastable inputs.
     @skipMeta
     @ops(foreach_binary_op_db)
     def test_binary_op_tensorlists_fastpath(self, device, dtype, op):

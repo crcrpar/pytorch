@@ -9979,6 +9979,11 @@ foreach_binary_op_db: List[OpInfo] = [
                          device_type='cuda', dtypes=(torch.float16,)),
         )
     ),
+    ForeachFuncInfo(
+        "pow",
+        dtype=all_types_and_complex_and(torch.bool, torch.bfloat16, torch.float16),
+        dtypesIfCUDA=all_types_and_complex_and(torch.bool, torch.bfloat16, torch.float16),
+    )
 ]
 
 foreach_pointwise_op_db: List[ForeachFuncInfo] = [
