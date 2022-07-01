@@ -3,7 +3,6 @@ from typing import cast, List, Optional
 
 import torch
 from torch import Tensor
-from torch.cuda.amp.grad_scaler import _MultiDeviceReplicator
 from .optimizer import Optimizer
 
 __all__ = ['Adam', 'adam']
@@ -488,6 +487,7 @@ def _fused_adam(
     inv_grad_scale: Optional[Tensor],
     found_inf: Optional[Tensor],
 ) -> None:
+    torch._foreach_add_(state_steps, 1)
     torch._fused_adam(
         params,
         grads,
@@ -506,3 +506,6 @@ def _fused_adam(
         inv_grad_scale=inv_grad_scale,
         found_inf=found_inf,
     )
+    # TODO(crcrpar): Ameliorate this.
+    if found_inf is not None:
+        torch._foreach_sub_(state_steps, [found_inf] * len(state_steps))
