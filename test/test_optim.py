@@ -11,6 +11,7 @@ import torch
 from torch._six import inf
 import torch.optim as optim
 import torch.optim._multi_tensor as optim_mt
+import torch.optim._fused as optim_fused
 import torch.nn.functional as F
 from torch.optim import SGD
 from torch.autograd import Variable
@@ -20,7 +21,6 @@ from torch.optim.lr_scheduler import LambdaLR, MultiplicativeLR, SequentialLR, S
     _LRScheduler, CyclicLR, CosineAnnealingWarmRestarts, OneCycleLR, ChainedScheduler, \
     EPOCH_DEPRECATION_WARNING
 from torch.optim.swa_utils import AveragedModel, SWALR, update_bn
-from torch.testing._internal.common_device_type import onlyCUDA, skipCUDAIfRocm
 from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_UBSAN, load_tests, \
     parametrize, instantiate_parametrized_tests
 # load_tests from common_utils is used to automatically filter tests for
@@ -469,7 +469,6 @@ class TestOptim(TestCase):
             for p1, p2 in zip(res[0], res[1]):
                 self.assertEqual(p1, p2, atol=5e-5, rtol=0)
 
-    @onlyCUDA
     def test_multi_tensor_optimizers(self):
         optimizer_pairs_with_flags = [
             ((optim.Adam, optim._multi_tensor.Adam), dict(weight_decay=1., amsgrad=True)),
@@ -504,8 +503,6 @@ class TestOptim(TestCase):
         ]
         self._test_derived_optimizers(optimizer_pairs_with_flags)
 
-    @onlyCUDA
-    @skipCUDAIfRocm
     def test_fused_optimizers(self):
         optimizer_pairs_with_flags = [
             ((optim.Adam, optim._fused.Adam), dict(weight_decay=1., amsgrad=False)),
@@ -517,7 +514,7 @@ class TestOptim(TestCase):
         self._test_derived_optimizers(optimizer_pairs_with_flags)
 
     def test_adam(self):
-        for optimizer in [optim.Adam, optim_mt.Adam]:
+        for optimizer in [optim.Adam, optim_mt.Adam, optim_fused.Adam]:
             self._test_basic_cases(
                 lambda weight, bias, maximize: optimizer([weight, bias], lr=1e-3, maximize=maximize),
                 constructor_accepts_maximize=True
