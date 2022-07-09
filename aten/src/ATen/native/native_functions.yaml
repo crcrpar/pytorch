@@ -13083,4 +13083,4 @@
   variants: function
   dispatch:
     CUDA: _fused_adam_kernel_cuda_
-  autogen: _fused_adam.functional, _fused_adam.out
+  autogen: _fused_adam, _fused_adam.out
