@@ -3822,6 +3822,9 @@ torch.cuda.synchronize()
             params_graphed = [p.clone().requires_grad_() for p in params]
 
             grads = [[torch.randn_like(p) for p in params] for _ in range(steps_warmup + steps_train)]
+            with torch.no_grad():
+                grads_control = [[g.clone() for g in gs] for gs in grads]
+                grads_graphed = [[g.clone() for g in gs] for gs in grads]
 
             # Control (capturable=False)
 
@@ -3829,7 +3832,7 @@ torch.cuda.synchronize()
 
             for i in range(steps_warmup + steps_train):
                 for j, p in enumerate(params_control):
-                    p.grad = grads[i][j]
+                    p.grad = grads_control[i][j]
                 opt.step()
 
             # capturable=True
@@ -3838,7 +3841,7 @@ torch.cuda.synchronize()
 
             for i in range(steps_warmup):
                 for j, p in enumerate(params_graphed):
-                    p.grad = grads[i][j]
+                    p.grad = grads_graphed[i][j]
                 opt.step()
 
             if actually_do_graphs:
@@ -3849,13 +3852,13 @@ torch.cuda.synchronize()
             for i in range(steps_train):
                 if actually_do_graphs:
                     for j, p in enumerate(params_graphed):
-                        p.grad.copy_(grads[i + steps_warmup][j])
+                        p.grad.copy_(grads_graphed[i + steps_warmup][j])
                     g.replay()
                 else:
                     # Passing capturable=True to the constructor and running without graphs should still be
                     # numerically correct, even if it's not ideal for performance.
                     for j, p in enumerate(params_graphed):
-                        p.grad = grads[i + steps_warmup][j]
+                        p.grad = grads_graphed[i + steps_warmup][j]
                     opt.step()
 
             for p_control, p_graphed in zip(params_control, params_graphed):
@@ -3901,6 +3904,9 @@ torch.cuda.synchronize()
                 params_graphed = [p.clone().requires_grad_() for p in params]
 
                 grads = [[torch.randn_like(p) for p in params] for _ in range(steps_warmup + steps_train)]
+                with torch.no_grad():
+                    grads_control = [[g.clone() for g in gs] for gs in grads]
+                    grads_graphed = [[g.clone() for g in gs] for gs in grads]
 
                 # Gradient Scaler
                 scaler_for_control = torch.cuda.amp.GradScaler(init_scale=1.0)
@@ -3918,7 +3924,7 @@ torch.cuda.synchronize()
 
                 for i in range(steps_warmup + steps_train):
                     for j, p in enumerate(params_control):
-                        p.grad = grads[i][j]
+                        p.grad = grads_control[i][j]
                     scaler_for_control.step(opt)
                     scaler_for_control.update()
 
@@ -3928,7 +3934,7 @@ torch.cuda.synchronize()
 
                 for i in range(steps_warmup):
                     for j, p in enumerate(params_graphed):
-                        p.grad = grads[i][j]
+                        p.grad = grads_graphed[i][j]
                     scaler_for_graphed.step(opt)
                     scaler_for_graphed.update()
 
@@ -3941,13 +3947,13 @@ torch.cuda.synchronize()
                 for i in range(steps_train):
                     if actually_do_graphs:
                         for j, p in enumerate(params_graphed):
-                            p.grad.copy_(grads[i + steps_warmup][j])
+                            p.grad.copy_(grads_graphed[i + steps_warmup][j])
                         g.replay()
                     else:
                         # Passing capturable=True to the constructor and running without graphs should still be
                         # numerically correct, even if it's not ideal for performance.
                         for j, p in enumerate(params_graphed):
-                            p.grad = grads[i + steps_warmup][j]
+                            p.grad = grads_graphed[i + steps_warmup][j]
                         scaler_for_graphed.step(opt)
                         scaler_for_graphed.update()
 
