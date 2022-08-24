@@ -548,12 +548,12 @@ They are used in specifying strategies for reduction collectives, e.g.,
           "__eq__",
           [](const ::c10d::ReduceOp& self,
              const ::c10d::ReduceOp::RedOpType& other) {
-            return self == other;
+            return self.op_ == other;
           })
       .def(
           "__eq__",
           [](const ::c10d::ReduceOp& self, const ::c10d::ReduceOp& other) {
-            return self == other.op_;
+            return self.op_ == other.op_;
           })
       .def("__hash__", [](const ::c10d::ReduceOp& self) { return self.op_; });
 

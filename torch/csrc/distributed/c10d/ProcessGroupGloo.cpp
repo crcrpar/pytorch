@@ -170,7 +170,8 @@ template <
     typename T,
     typename std::enable_if<!std::is_integral<T>::value, int>::type = 0>
 ReduceFunc toFunction(const ReduceOp& r) {
-  switch (r) {
+  const auto r_op_type = r.op_;
+  switch (r_op_type) {
     case ReduceOp::SUM:
       return ReduceFunc(&::gloo::sum<T>);
     case ReduceOp::PRODUCT:
@@ -244,7 +245,8 @@ template <
     typename T,
     typename std::enable_if<std::is_integral<T>::value, int>::type = 0>
 ReduceFunc toFunction(const ReduceOp& r) {
-  switch (r) {
+  const auto r_op_type = r.op_;
+  switch (r_op_type) {
     case ReduceOp::SUM:
       return ReduceFunc(&::gloo::sum<T>);
     case ReduceOp::PRODUCT:
@@ -1456,7 +1458,7 @@ c10::intrusive_ptr<ProcessGroup::Work> ProcessGroupGloo::allreduce(
   }
 
   const auto& layout = inputs[0].layout();
-  if (layout == c10::kSparse && opts.reduceOp != ReduceOp::SUM) {
+  if (layout == c10::kSparse && opts.reduceOp.op_ != ReduceOp::SUM) {
     invalidArgument(
         "unsupported reduction operation "
         "(allreduce of sparse tensors only works with ReduceOp.SUM)");

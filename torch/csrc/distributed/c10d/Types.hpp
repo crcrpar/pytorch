@@ -69,19 +69,17 @@ class ReduceOp : public torch::CustomClassHolder {
     return *this;
   }
 
-  operator RedOpType() const { return op_; }
-
   bool operator==(const std::uint8_t other) {
     TORCH_INTERNAL_ASSERT(other < 9, "Invalid other op value");
     return other == op_;
   }
 
   bool operator==(const ReduceOp::RedOpType other) {
-    return *this == static_cast<std::uint8_t>(other);
+    return op_ == static_cast<std::uint8_t>(other);
   }
 
   bool operator==(const ReduceOp& other) {
-    return *this == other.op_;
+    return op_ == other.op_;
   }
 
   RedOpType op_ = SUM;

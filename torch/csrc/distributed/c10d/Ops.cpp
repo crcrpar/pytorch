@@ -22,13 +22,13 @@ c10::intrusive_ptr<ProcessGroup::Work> broadcast_(
 c10::intrusive_ptr<ProcessGroup::Work> allreduce_(
     at::TensorList tensors,
     const c10::intrusive_ptr<ProcessGroup>& process_group,
-    int64_t reduce_op,
+    c10d::ReduceOp reduce_op,
     int64_t timeout) {
   auto tensor_vec = tensors.vec();
   return process_group->allreduce(
       tensor_vec,
       AllreduceOptions{
-          ReduceOp(static_cast<ReduceOp::RedOpType>(reduce_op)),
+          reduce_op,
           std::chrono::milliseconds(timeout)});
 }
 
@@ -47,20 +47,20 @@ c10::intrusive_ptr<ProcessGroup::Work> reduce_scatter_(
     const std::vector<at::Tensor>& output_tensors,
     const std::vector<std::vector<at::Tensor>>& input_tensors,
     const c10::intrusive_ptr<ProcessGroup>& process_group,
-    int64_t reduce_op,
+    c10d::ReduceOp reduce_op,
     int64_t timeout) {
   return process_group->reduce_scatter(
       const_cast<std::vector<at::Tensor>&>(output_tensors),
       const_cast<std::vector<std::vector<at::Tensor>>&>(input_tensors),
       ReduceScatterOptions{
-          ReduceOp(static_cast<ReduceOp::RedOpType>(reduce_op)),
+          reduce_op,
           std::chrono::milliseconds(timeout)});
 }
 
 c10::intrusive_ptr<ProcessGroup::Work> reduce_(
     at::TensorList tensors,
     const c10::intrusive_ptr<ProcessGroup>& process_group,
-    int64_t reduce_op,
+    c10d::ReduceOp reduce_op,
     int64_t root_rank,
     int64_t root_tensor,
     int64_t timeout) {
@@ -68,7 +68,7 @@ c10::intrusive_ptr<ProcessGroup::Work> reduce_(
   return process_group->reduce(
       tensor_vec,
       ReduceOptions{
-          ReduceOp{static_cast<ReduceOp::RedOpType>(reduce_op)},
+          reduce_op,
           root_rank,
           root_tensor,
           std::chrono::milliseconds(timeout)});
@@ -140,11 +140,12 @@ c10::intrusive_ptr<ProcessGroup::Work> recv_(
 }
 
 TORCH_LIBRARY(c10d, m) {
-  // The following ProcessGroup and Work definations are more like declarations.
+  // The following ProcessGroup and Work definitions are more like declarations.
   // They don't expose the details of the two classes into TorchScript.
   m.class_<ProcessGroup>("ProcessGroup").def(torch::init<int64_t, int64_t>());
   m.class_<ProcessGroup::Work>("Work").def(torch::init<>());
   m.class_<ReduceOp>("ReduceOp").def(torch::init<>());
+  m.class_<SupplementBase>("SupplementBase").def(torch::init<>());
   // It's important to register the op to the CompositeExplicitAutograd key to
   // enable
   // __torch_dispatch__.
@@ -214,12 +215,12 @@ c10::intrusive_ptr<ProcessGroup::Work> allreduce(
                        .typed<c10::intrusive_ptr<::c10d::ProcessGroup::Work>(
                            at::TensorList,
                            const c10::intrusive_ptr<::c10d::ProcessGroup>&,
-                           int64_t,
+                           c10d::ReduceOp,
                            int64_t)>();
   return op.call(
       tensors,
       process_group,
-      static_cast<uint64_t>(opts.reduceOp),
+      opts.reduceOp,
       opts.timeout.count());
 }
 
@@ -250,13 +251,13 @@ c10::intrusive_ptr<ProcessGroup::Work> reduce_scatter(
                            const std::vector<at::Tensor>&,
                            const std::vector<std::vector<at::Tensor>>&,
                            const c10::intrusive_ptr<::c10d::ProcessGroup>&,
-                           int64_t,
+                           c10d::ReduceOp,
                            int64_t)>();
   return op.call(
       output_tensors,
       input_tensors,
       process_group,
-      static_cast<uint64_t>(opts.reduceOp),
+      opts.reduceOp,
       opts.timeout.count());
 }
 
@@ -269,14 +270,14 @@ c10::intrusive_ptr<ProcessGroup::Work> reduce(
                        .typed<c10::intrusive_ptr<::c10d::ProcessGroup::Work>(
                            at::TensorList,
                            const c10::intrusive_ptr<::c10d::ProcessGroup>&,
-                           int64_t,
+                           c10d::ReduceOp,
                            int64_t,
                            int64_t,
                            int64_t)>();
   return op.call(
       tensors,
       process_group,
-      static_cast<uint64_t>(opts.reduceOp),
+      opts.reduceOp,
       opts.rootRank,
       opts.rootTensor,
       opts.timeout.count());

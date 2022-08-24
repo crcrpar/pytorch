@@ -105,21 +105,22 @@ ncclRedOpRAII getNcclReduceOp(
     const ncclDataType_t& dataType,
     const ncclComm_t& comm,
     int dev_in_group) {
+  const auto redOpType = reduceOp.op_;
   try {
     if (input.scalar_type() == at::kBool) {
-      if (reduceOp == ReduceOp::SUM) {
+      if (redOpType == ReduceOp::SUM) {
         // For bool tensors, map sum to max, which both represent a bitwise or.
         // This is to prevent overflow issues with sum, since we use uint8 to
         // represent a bool (see ncclDataType mapping).
         return ncclMax;
       }
 #ifdef NCCL_HAS_AVG
-      if (reduceOp == ReduceOp::AVG) {
+      if (redOpType == ReduceOp::AVG) {
         TORCH_CHECK(false, "Cannot use ReduceOp.AVG with boolean inputs");
       }
 #endif
     }
-    if (reduceOp == ReduceOp::PREMUL_SUM) {
+    if (redOpType == ReduceOp::PREMUL_SUM) {
 #ifdef ENABLE_NCCL_PREMUL_SUM_SUPPORT
       switch (dataType) {
         case ncclHalf:
@@ -141,9 +142,9 @@ ncclRedOpRAII getNcclReduceOp(
       TORCH_CHECK(false, "PreMulSum requires NCCL>=2.11.1");
 #endif
     }
-    return ncclOp.at(reduceOp);
+    return ncclOp.at(reduceOp.op_);
   } catch (const std::out_of_range& e) {
-    switch (reduceOp) {
+    switch (redOpType) {
       case ReduceOp::AVG:
         TORCH_CHECK(
             false,
