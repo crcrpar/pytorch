@@ -3,18 +3,22 @@
 #include <chrono>
 #include <cstdint>
 
-#include <ATen/core/Tensor.h>
+#include <ATen/TypeDefault.h>
+#include <ATen/core/ivalue.h>
+#include <c10/util/intrusive_ptr.h>
 
 namespace c10d {
 
 // Base class for supplementary data potentially needed by ReduceOps
-struct _SupplementBase {
-  virtual ~_SupplementBase() {}
+class SupplementBase : public torch::CustomClassHolder {
+ public:
+  virtual ~SupplementBase();
 };
 
 // Supplementary data specific to NCCL PREMUL_SUM
 // The point of use in ProcessGroupNCCL knows how to unpack it.
-struct NCCLPreMulSumSupplement : _SupplementBase {
+class NCCLPreMulSumSupplement : public SupplementBase {
+ public:
   double double_factor{0.0};
   std::vector<at::Tensor> tensor_factors;
   NCCLPreMulSumSupplement(double f) : double_factor{f} {}
@@ -22,9 +26,10 @@ struct NCCLPreMulSumSupplement : _SupplementBase {
 };
 
 // Other ReduceOps that need different supplementary data can also
-// derive from _SupplementBase.
+// derive from SupplementBase.
 // TODO(crcrpar): Make `ReduceOp` compatible with TorchScript Compiler.
-struct ReduceOp {
+class ReduceOp : public torch::CustomClassHolder {
+ public:
   enum RedOpType : uint8_t {
     SUM = 0,
     AVG = 1,
@@ -45,7 +50,7 @@ struct ReduceOp {
       op_ != PREMUL_SUM, "PREMUL_SUM requires a scale factor tensor or scalar argument");
   }
 
-  ReduceOp(RedOpType op, std::shared_ptr<_SupplementBase> optional_supplement) {
+  ReduceOp(RedOpType op, c10::intrusive_ptr<SupplementBase> optional_supplement) {
     if (optional_supplement.get()) {
       op_ = op;
     } else {
@@ -53,7 +58,7 @@ struct ReduceOp {
     }
   }
 
-  // The heap resource supplement_, if it exists, is managed by a shared_ptr,
+  // The heap resource supplement_, if it exists, is managed by an c10::intrusive_ptr,
   // so constructors and operator= can be simple
   ReduceOp(const ReduceOp& other) :
     op_(other.op_), supplement_(other.supplement_) {}
@@ -87,13 +92,13 @@ struct ReduceOp {
   // Right now, only PREMUL_SUM needs supplementary data, but the same
   // mechanism could extend to support other nontrivial reduce ops with
   // different supplementary payloads.
-  std::shared_ptr<_SupplementBase> supplement_;
+  c10::intrusive_ptr<SupplementBase> supplement_;
 };
 
 template<typename T> ReduceOp makeNCCLPreMulSum(const T& factor) {
   ReduceOp rop;
   rop.op_ = ReduceOp::PREMUL_SUM;
-  rop.supplement_ = std::make_shared<NCCLPreMulSumSupplement>(factor);
+  rop.supplement_ = c10::make_intrusive<NCCLPreMulSumSupplement>(factor);
   return rop;
 }
 
