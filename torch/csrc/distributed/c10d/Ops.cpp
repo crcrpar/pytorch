@@ -144,6 +144,7 @@ TORCH_LIBRARY(c10d, m) {
   // They don't expose the details of the two classes into TorchScript.
   m.class_<ProcessGroup>("ProcessGroup").def(torch::init<int64_t, int64_t>());
   m.class_<ProcessGroup::Work>("Work").def(torch::init<>());
+  m.class_<ReduceOp>("ReduceOp").def(torch::init<>());
   // It's important to register the op to the CompositeExplicitAutograd key to
   // enable
   // __torch_dispatch__.
