@@ -3,12 +3,15 @@
 #include <chrono>
 #include <cstdint>
 
+#include <ATen/core/ivalue.h>
 #include <ATen/core/Tensor.h>
+
+#include <c10/util/intrusive_ptr.h>
 
 namespace c10d {
 
 // Base class for supplementary data potentially needed by ReduceOps
-struct _SupplementBase {
+struct TORCH_API _SupplementBase : torch::CustomClassHolder {
   virtual ~_SupplementBase() {}
 };
 
@@ -24,7 +27,7 @@ struct NCCLPreMulSumSupplement : _SupplementBase {
 // Other ReduceOps that need different supplementary data can also
 // derive from _SupplementBase.
 // TODO(crcrpar): Make `ReduceOp` compatible with TorchScript Compiler.
-struct ReduceOp {
+struct TORCH_API ReduceOp : torch::CustomClassHolder {
   enum RedOpType : uint8_t {
     SUM = 0,
     AVG = 1,

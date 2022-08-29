@@ -139,14 +139,23 @@ c10::intrusive_ptr<ProcessGroup::Work> recv_(
       tensor_vec, static_cast<int>(srcRank), static_cast<int>(tag));
 }
 
+void reduce_op_test(
+  const c10::intrusive_ptr<ProcessGroup>& process_group,
+  const c10::intrusive_ptr<ReduceOp>& reduce_op
+) {
+  // noop
+}
+
 TORCH_LIBRARY(c10d, m) {
   // The following ProcessGroup and Work definations are more like declarations.
   // They don't expose the details of the two classes into TorchScript.
   m.class_<ProcessGroup>("ProcessGroup").def(torch::init<int64_t, int64_t>());
   m.class_<ProcessGroup::Work>("Work").def(torch::init<>());
+  m.class_<ReduceOp>("ReduceOp").def(torch::init<>());
   // It's important to register the op to the CompositeExplicitAutograd key to
   // enable
   // __torch_dispatch__.
+  m.def("reduce_op_test", dispatch(c10::DispatchKey::CompositeExplicitAutograd, reduce_op_test));
   m.def(
       "broadcast_",
       dispatch(c10::DispatchKey::CompositeExplicitAutograd, broadcast_));
@@ -379,6 +388,18 @@ c10::intrusive_ptr<ProcessGroup::Work> recv(
                            int64_t,
                            int64_t)>();
   return op.call(tensors, process_group, srcRank, tag);
+}
+
+void reduce_op_caller(
+    const c10::intrusive_ptr<ProcessGroup>& process_group,
+    const c10::intrusive_ptr<ReduceOp>& reduce_op
+) {
+  static auto op = c10::Dispatcher::singleton()
+                       .findSchemaOrThrow("c10d::reduce_op_test", "")
+                       .typed<c10::intrusive_ptr<::c10d::ProcessGroup::Work>(
+                           const c10::intrusive_ptr<::c10d::ProcessGroup>&,
+                           const c10::intrusive_ptr<ReduceOp>&)>();
+  op.call(process_group, reduce_op);
 }
 
 } // namespace ops
