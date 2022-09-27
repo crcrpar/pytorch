@@ -225,22 +225,15 @@ void check_inputs(
     int input_multiplier,
     int output_multiplier) {
   // len(inputs) == len(outputs)
-  size_t len = inputs.size();
+  const size_t len = inputs.size();
 
-  if (len <= 0) {
-    throw std::runtime_error("input sequence can't be empty");
-  }
+  TORCH_CHECK(len > 0, "input sequence can't be empty");
 
-  if (len != outputs.size()) {
-    std::stringstream err;
-    err << "inputs and outputs sequences have to be of the same length, but got input of length "
-        << len << " and output of length " << outputs.size();
-    throw std::runtime_error(err.str());
-  }
+  TORCH_CHECK(len == outputs.size(), "inputs and outputs sequences have to be of the same length, but got input of length ", len, " and output of length ", outputs.size());
 
   device_set devices;
-  int64_t numel = inputs[0].numel();
-  auto dtype = inputs[0].scalar_type();
+  const int64_t numel = inputs[0].numel();
+  const auto dtype = inputs[0].scalar_type();
 
   for (const auto i : c10::irange(len)) {
     auto input = inputs[i];
@@ -251,9 +244,7 @@ void check_inputs(
 
     auto input_device = input.get_device();
     // inputs must be on unique devices
-    if (devices.test(input_device)) {
-      throw std::runtime_error("inputs must be on unique devices");
-    }
+    TORCH_CHECK(!devices.test(input_device), "inputs must be on unique devices");
     devices.set(input_device);
   }
 }
@@ -264,15 +255,13 @@ void check_inputs(
     int root,
     int input_multiplier,
     int output_multiplier) {
-  size_t len = inputs.size();
+  const size_t len = inputs.size();
 
-  if (len <= 0) {
-    throw std::runtime_error("input sequence can't be empty");
-  }
+  TORCH_CHECK(len > 0, "input sequence can't be empty");
 
   device_set devices;
-  int64_t numel = inputs[0].numel();
-  auto dtype = inputs[0].scalar_type();
+  const int64_t numel = inputs[0].numel();
+  const auto dtype = inputs[0].scalar_type();
 
   for (const auto i : c10::irange(len)) {
     auto input = inputs[i];
@@ -287,9 +276,7 @@ void check_inputs(
 
     auto input_device = input.get_device();
     // inputs must be on unique devices
-    if (devices.test(input_device)) {
-      throw std::runtime_error("inputs must be on unique devices");
-    }
+    TORCH_CHECK(!devices.test(input_device), "inputs must be on unique devices");
     devices.set(input_device);
   }
 }
@@ -313,7 +300,7 @@ AutoNcclGroup::~AutoNcclGroup() noexcept(false) {
 bool is_available(TensorList tensors) {
 #ifdef USE_NCCL
   device_set devices;
-  for (auto& tensor : tensors) {
+  for (const auto& tensor : tensors) {
     if (!tensor.is_cuda() || tensor.is_sparse())
       return false;
     if (!tensor.is_contiguous())
@@ -347,7 +334,7 @@ void get_unique_id(ncclUniqueId& id) {
   using namespace torch::cuda::nccl::detail;
   NCCL_CHECK(ncclGetUniqueId(to_nccl_unique_id(&id)));
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -419,11 +406,11 @@ void broadcast(
   AutoNcclGroup nccl_group_guard;
   at::cuda::OptionalCUDAGuard device_guard;
   for (size_t i = 0, num_tensors = tensors.size(); i < num_tensors; i++) {
-    int device = tensors[i].get_device();
-    device_guard.set_index(device);
+    const auto device_index = tensors[i].device().index();
+    device_guard.set_index(device_index);
     // Default to the current stream
     const auto stream = (streams.empty() || !streams[i])
-        ? at::cuda::getCurrentCUDAStream(device).stream()
+        ? at::cuda::getCurrentCUDAStream(device_index).stream()
         : streams[i]->stream();
     TORCH_CHECK(
         static_cast<uint64_t>(numel) <= static_cast<uint64_t>(count_max),
@@ -443,7 +430,7 @@ void broadcast(
         stream));
   }
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -471,11 +458,11 @@ void reduce(
   AutoNcclGroup nccl_group_guard;
   at::cuda::OptionalCUDAGuard device_guard;
   for (const auto i : c10::irange(len)) {
-    int device = inputs[i].device().index();
-    device_guard.set_index(device);
+    const auto device_index = inputs[i].device().index();
+    device_guard.set_index(device_index);
     // Default to the current stream
     const auto stream = (streams.empty() || !streams[i])
-        ? at::cuda::getCurrentCUDAStream(device).stream()
+        ? at::cuda::getCurrentCUDAStream(device_index).stream()
         : streams[i]->stream();
 
     ncclComm_t comm = comms_ref[i];
@@ -490,7 +477,7 @@ void reduce(
         stream));
   }
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -523,11 +510,11 @@ void all_reduce(
   AutoNcclGroup nccl_group_guard;
   at::cuda::OptionalCUDAGuard device_guard;
   for (const auto i : c10::irange(len)) {
-    int device = inputs[i].device().index();
-    device_guard.set_index(device);
+    const auto device_index = inputs[i].device().index();
+    device_guard.set_index(device_index);
     // Default to the current stream
     const auto stream = (streams.empty() || !streams[i])
-        ? at::cuda::getCurrentCUDAStream(device).stream()
+        ? at::cuda::getCurrentCUDAStream(device_index).stream()
         : streams[i]->stream();
 
     ncclComm_t comm = comms_ref[i];
@@ -541,7 +528,7 @@ void all_reduce(
         stream));
   }
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -565,11 +552,11 @@ void reduce_scatter(
   AutoNcclGroup nccl_group_guard;
   at::cuda::OptionalCUDAGuard device_guard;
   for (const auto i : c10::irange(len)) {
-    int device = inputs[i].device().index();
-    device_guard.set_index(device);
+    const auto device_index = inputs[i].device().index();
+    device_guard.set_index(device_index);
     // Default to the current stream
     const auto stream = (streams.empty() || !streams[i])
-        ? at::cuda::getCurrentCUDAStream(device).stream()
+        ? at::cuda::getCurrentCUDAStream(device_index).stream()
         : streams[i]->stream();
 
     ncclComm_t comm = comms_ref[i];
@@ -583,7 +570,7 @@ void reduce_scatter(
         stream));
   }
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -606,11 +593,11 @@ void all_gather(
   AutoNcclGroup nccl_group_guard;
   at::cuda::OptionalCUDAGuard device_guard;
   for (const auto i : c10::irange(len)) {
-    int device = inputs[i].device().index();
-    device_guard.set_index(device);
+    const auto device_index = inputs[i].device().index();
+    device_guard.set_index(device_index);
     // Default to the current stream
     const auto stream = (streams.empty() || !streams[i])
-        ? at::cuda::getCurrentCUDAStream(device).stream()
+        ? at::cuda::getCurrentCUDAStream(device_index).stream()
         : streams[i]->stream();
 
     ncclComm_t comm = comms_ref[i];
@@ -633,7 +620,7 @@ void all_gather(
 #endif
   }
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -673,10 +660,10 @@ void all2all_single_equal_split(
   NCCL_CHECK(ncclGroupEnd());
 #endif
 #else
-  AT_ERROR("all2all is only supported for NCCL lib version >= 2.7.0");
+  TORCH_CHECK(false, "all2all is only supported for NCCL lib version >= 2.7.0");
 #endif
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -725,10 +712,10 @@ void all2all_single_unequal_split(
   }
   NCCL_CHECK(ncclGroupEnd());
 #else
-  AT_ERROR("all2all is only supported for NCCL lib version >= 2.7.0");
+  TORCH_CHECK(false, "all2all is only supported for NCCL lib version >= 2.7.0");
 #endif
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -768,10 +755,10 @@ void all2all(
   }
   NCCL_CHECK(ncclGroupEnd());
 #else
-  AT_ERROR("all2all is only supported for NCCL lib version >= 2.7.0");
+  TORCH_CHECK(false, "all2all is only supported for NCCL lib version >= 2.7.0");
 #endif
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -792,10 +779,10 @@ void send(
       to_nccl_comm(comm),
       stream.stream()));
 #else
-  AT_ERROR("Send is only supported for NCCL lib version >= 2.7.0");
+  TORCH_CHECK(false, "Send is only supported for NCCL lib version >= 2.7.0");
 #endif
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK("PyTorch built without NCCL support");
 #endif
 }
 
@@ -816,10 +803,10 @@ void recv(
       to_nccl_comm(comm),
       stream.stream()));
 #else
-  AT_ERROR("Recv is only supported for NCCL lib version >= 2.7.0");
+  TORCH_CHECK(false, "Recv is only supported for NCCL lib version >= 2.7.0");
 #endif
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -861,10 +848,10 @@ void gather(
   NCCL_CHECK(ncclGroupEnd());
 
 #else
-  AT_ERROR("gather is only supported for NCCL lib version >= 2.7.0");
+  TORCH_CHECK(false, "gather is only supported for NCCL lib version >= 2.7.0");
 #endif
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
@@ -906,10 +893,10 @@ void scatter(
   NCCL_CHECK(ncclGroupEnd());
 
 #else
-  AT_ERROR("scatter is only supported for NCCL lib version >= 2.7.0");
+  TORCH_CHECK(false, "scatter is only supported for NCCL lib version >= 2.7.0");
 #endif
 #else
-  AT_ERROR("PyTorch built without NCCL support");
+  TORCH_CHECK(false, "PyTorch built without NCCL support");
 #endif
 }
 
