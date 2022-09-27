@@ -47,7 +47,9 @@ enum class ncclResult {
   InternalError = 3,
   InvalidArgument = 4,
   InvalidUsage = 5,
-  NumResults = 6
+  // Added in [2.13.4](https://docs.nvidia.com/deeplearning/nccl/release-notes/rel_2-13-4.html)
+  RemoteError = 6,
+  NumResults = 7
 };
 
 /* Reduction operation selector */
