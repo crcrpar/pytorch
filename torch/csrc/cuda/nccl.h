@@ -53,7 +53,7 @@ enum class ncclResult {
 };
 
 /* Reduction operation selector */
-enum class ncclRedOp { Sum = 0, Prod = 1, Max = 2, Min = 3, NumOps = 4 };
+enum class ncclRedOp { Sum = 0, Prod = 1, Max = 2, Min = 3, Avg = 4, NumOps = 5 };
 
 /* Data types */
 enum class ncclDataType {
