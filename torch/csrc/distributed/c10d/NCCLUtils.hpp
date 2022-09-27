@@ -82,6 +82,12 @@ std::string getNcclErrorDetailStr(ncclResult_t error, c10::optional<std::string>
 #define ENABLE_NCCL_PREMUL_SUM_SUPPORT
 #endif
 
+#if defined(NCCL_MAJOR) && (NCCL_MAJOR == 2) && defined(NCCL_MINOR) && (NCCL_MINOR >= 14)
+#define ENABLE_NCCL_FAULT_TOLERANCE_SUPPORT
+#elif defined(NCCL_MAJOR) && (NCCL_MAJOR >= 3)
+#define ENABLE_NCCL_FAULT_TOLERANCE_SUPPORT
+#endif
+
 // Macro to throw on a non-successful NCCL return value.
 #define C10D_NCCL_CHECK(cmd, failureReason)                                                  \
   do {                                                                        \

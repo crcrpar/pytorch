@@ -42,6 +42,10 @@ constexpr const char* NCCL_ASYNC_ERROR_HANDLING = "NCCL_ASYNC_ERROR_HANDLING";
 // This variable must be set together with NCCL_ASYNC_ERROR_HANDLING.
 constexpr const char* NCCL_DESYNC_DEBUG = "NCCL_DESYNC_DEBUG";
 
+// Environment variable to control whether NCCL fault tolerance is enabled.
+// This requires NCCL>=2.14.3.
+constexpr const char* NCCL_FAULT_TOLERANCE = "NCCL_FAULT_TOLERANCE";
+
 constexpr const char* NCCL_BACKEND_NAME = "nccl";
 
 // TearDown mode: tear down process upon error, see `WorkNCCL::handleNCCLGuard`
@@ -168,6 +172,9 @@ class TORCH_API ProcessGroupNCCL : public ProcessGroup {
 
     // Clone of blockingWait_ from ProcessGroupNCCL.
     bool blockingWait_ = false;
+
+    // Clone of enable_fault_tolerance_ from ProcessGroupNCCL.
+    bool enable_fault_tolerance_ = false;
 
     // Clone of opTimeout_ from ProcessGroupNCCL.
     std::chrono::milliseconds opTimeout_;
@@ -660,6 +667,9 @@ class TORCH_API ProcessGroupNCCL : public ProcessGroup {
   // Whether or not wait() and synchronize() are blocking operations that wait
   // for the operation to complete.
   bool blockingWait_ = false;
+
+  // Whether or not enable NCCL fault tolerance.
+  bool enable_fault_tolerance_ = false;
 
   // Whether or not the workCleanupThread is used to perform async error
   // handling.

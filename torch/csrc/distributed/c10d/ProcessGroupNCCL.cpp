@@ -349,6 +349,7 @@ ProcessGroupNCCL::WorkNCCL::WorkNCCL(const WorkNCCL& w)
       ncclEndEvents_(w.ncclEndEvents_),
       ncclComms_(w.ncclComms_),
       blockingWait_(w.blockingWait_),
+      enable_fault_tolerance_(w.enable_fault_tolerance_),
       opTimeout_(w.opTimeout_),
       workStartTime_(w.workStartTime_),
       seq_(w.seq_),
@@ -627,6 +628,7 @@ ProcessGroupNCCL::ProcessGroupNCCL(
       static_cast<ErrorHandlingMode>(parseEnvVarInt(NCCL_ASYNC_ERROR_HANDLING));
   desyncDebug_ = parseEnvVarFlag(NCCL_DESYNC_DEBUG) ||
       (dist_debug_level_ >= DebugLevel::Detail);
+  enable_fault_tolerance_ = parseEnvVarFlag(NCCL_FAULT_TOLERANCE);
 
   if (blockingWait_) {
     if (asyncErrorHandling_ != NoHandling || desyncDebug_) {

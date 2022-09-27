@@ -355,7 +355,14 @@ ncclComm_t comm_init_rank(int nranks, const ncclUniqueId& comm_id, int rank) {
 #endif
 }
 
+// n.b.(crcrpar): Try calling `ncclCommDestroy` if NCCL>=2.14
 void comm_destroy(ncclComm_t comm) {
+#ifdef USE_NCCL
+#if (defined(NCCL_MAJOR) && (NCCL_MAJOR >= 2) && defined(NCCL_MINOR) && (NCCL_MINOR >= 14)) || (defined(NCCL_MAJOR) && (NCCL_MAJOR >= 3))
+  using namespace torch::cuda::nccl::detail;
+  NCCL_CHECK(ncclCommDestroy(to_nccl_comm(comm)));
+#endif
+#endif
   /*
    * TODO(T30279827) Temporarily disable calling ncclCommDestroy
    * Calling ncclCommDestroy while program exiting is undefined
@@ -365,11 +372,6 @@ void comm_destroy(ncclComm_t comm) {
    * Following up with Nvidia for long term solution.
    */
   return;
-
-#ifdef USE_NCCL
-  using namespace torch::cuda::nccl::detail;
-  NCCL_CHECK(ncclCommDestroy(to_nccl_comm(comm)));
-#endif
 }
 
 namespace {
