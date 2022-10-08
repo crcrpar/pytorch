@@ -33,7 +33,7 @@ def calculate_shards(
     test_file_times: Dict[str, float],
     must_serial: Optional[Callable[[str], bool]] = None,
 ) -> List[Tuple[float, List[str]]]:
-    must_serial = must_serial or (lambda x: True)
+    must_serial = must_serial or (lambda _: True)
 
     known_tests = [x for x in tests if x in test_file_times]
     unknown_tests: List[str] = [x for x in tests if x not in known_tests]

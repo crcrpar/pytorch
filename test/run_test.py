@@ -525,7 +525,7 @@ def test_distributed(test_module, test_directory, options):
         # Run all distributed backends in parallel, trying to run env/file init
         # methods in parallel too ends in failures in which the subprocesses
         # timeout
-        pool = Pool(processes=len(config))
+        pool = Pool(processes=1 if options.disable_parallel_run else len(config))
         return_codes = []
         tmp_dirs = []
 
@@ -718,7 +718,7 @@ def print_log_file(test: str, file_path: str, failed: bool) -> None:
 
 
 def run_test_ops(test_module, test_directory, options):
-    if 'slow-gradcheck' in os.getenv("BUILD_ENVIRONMENT", ""):
+    if 'slow-gradcheck' in os.getenv("BUILD_ENVIRONMENT", "") or options.disable_parallel_run:
         # there are a lot of tests that take up a lot of space in slowgrad check, so don't bother parallelizing
         # it's also on periodic so we don't care about TTS as much
         return run_test(test_module, test_directory, copy.deepcopy(options),
@@ -935,6 +935,11 @@ def parse_args():
             "Use 'list' to simply parse doctests and check syntax. "
             "Use 'all' to execute all doctests or specify a specific "
             "doctest to run")
+    )
+    parser.add_argument(
+        "--disable-parallel-run",
+        action="store_true",
+        help="Disable parallel run of tests using multiprocessing.Pool and/or pytest's sharding"
     )
     return parser.parse_args()
 
@@ -1173,7 +1178,7 @@ def main():
     print_to_stderr("parallel (file granularity) tests:\n {}".format("\n ".join(selected_tests_parallel)))
     print_to_stderr("serial (file granularity) tests:\n {}".format("\n ".join(selected_tests_serial)))
 
-    pool = get_context("spawn").Pool(NUM_PROCS, maxtasksperchild=1)
+    pool = get_context("spawn").Pool(1 if options.disable_parallel_run else NUM_PROCS, maxtasksperchild=1)
     os.makedirs(REPO_ROOT / "test" / "test-reports", exist_ok=True)
 
     def success_callback(err_message):
@@ -1186,17 +1191,14 @@ def main():
         return False
 
     try:
-        os.environ['PARALLEL_TESTING'] = '1'
         for test in selected_tests_parallel:
             options_clone = copy.deepcopy(options)
-            if test in USE_PYTEST_LIST:
-                options_clone.pytest = True
+            options_clone.pytest = test in USE_PYTEST_LIST
             pool.apply_async(run_test_module, args=(test, test_directory, options_clone), callback=success_callback)
         pool.close()
         pool.join()
-        del os.environ['PARALLEL_TESTING']
 
-        if not options.continue_through_error and len(failure_messages) != 0:
+        if not options.continue_through_error and failure_messages:
             raise RuntimeError("\n".join(failure_messages))
 
         for test in selected_tests_serial:
@@ -1226,7 +1228,7 @@ def main():
                 if not PYTORCH_COLLECT_COVERAGE:
                     cov.html_report()
 
-    if len(failure_messages) != 0:
+    if failure_messages:
         for err in failure_messages:
             print_to_stderr(err)
         sys.exit(1)
