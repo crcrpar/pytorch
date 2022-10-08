@@ -718,21 +718,24 @@ def print_log_file(test: str, file_path: str, failed: bool) -> None:
 
 
 def run_test_ops(test_module, test_directory, options):
+    rerun_options = [] if options.disable_pytest_rerun else ["--reruns=2"]
     if 'slow-gradcheck' in os.getenv("BUILD_ENVIRONMENT", "") or options.disable_parallel_run:
         # there are a lot of tests that take up a lot of space in slowgrad check, so don't bother parallelizing
         # it's also on periodic so we don't care about TTS as much
-        return run_test(test_module, test_directory, copy.deepcopy(options),
-                        extra_unittest_args=["--use-pytest", '-vv', '-x', '--reruns=2', '-rfEX'],
-                        )
+        return run_test(
+            test_module, test_directory, copy.deepcopy(options),
+            extra_unittest_args=["--use-pytest", '-vv', '-x', '-rfEX'] + rerun_options)
     return_codes = []
     os.environ["NUM_PARALLEL_PROCS"] = str(NUM_PROCS)
     pool = get_context("spawn").Pool(NUM_PROCS)
     for i in range(NUM_PROCS):
-        return_code = pool.apply_async(run_test, args=(test_module, test_directory, copy.deepcopy(options)),
-                                       kwds={"extra_unittest_args": ["--use-pytest", '-vv', '-x', '--reruns=2', '-rfEX',
-                                                                     f'--shard-id={i}', f'--num-shards={NUM_PROCS}',
-                                                                     "-k=not _linalg_cholesky_"],
-                                             })
+        kwds = {
+            "extra_unittest_args": [
+                "--use-pytest", '-vv', '-x', '-rfEX', f'--shard-id={i}', f'--num-shards={NUM_PROCS}',
+                "-k=not _linalg_cholesky_",
+            ] + rerun_options,
+        }
+        return_code = pool.apply_async(run_test, args=(test_module, test_directory, copy.deepcopy(options)), kwds=kwds)
         return_codes.append(return_code)
     pool.close()
     pool.join()
@@ -741,10 +744,10 @@ def run_test_ops(test_module, test_directory, options):
     for return_code in return_codes:
         if return_code.get() != 0:
             return return_code.get()
-    return_code = run_test(test_module, test_directory, copy.deepcopy(options),
-                           extra_unittest_args=["--use-pytest", '-vv', '-x', '--reruns=2', '-rfEX',
-                                                "-k=_linalg_cholesky_"],
-                           )
+    return_code = run_test(
+        test_module, test_directory, copy.deepcopy(options),
+        extra_unittest_args=["--use-pytest", '-vv', '-x', '-rfEX', "-k=_linalg_cholesky_"] + rerun_options,
+    )
     return return_code
 
 
@@ -939,7 +942,12 @@ def parse_args():
     parser.add_argument(
         "--disable-parallel-run",
         action="store_true",
-        help="Disable parallel run of tests using multiprocessing.Pool and/or pytest's sharding"
+        help="Disable parallel run of tests using multiprocessing.Pool and/or pytest's sharding",
+    )
+    parser.add_argument(
+        "--disable-pytest-rerun",
+        action="store_true",
+        help="Disable `pytest-refunfailures` plugin",
     )
     return parser.parse_args()
 
