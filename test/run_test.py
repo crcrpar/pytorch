@@ -525,7 +525,7 @@ def test_distributed(test_module, test_directory, options):
         # Run all distributed backends in parallel, trying to run env/file init
         # methods in parallel too ends in failures in which the subprocesses
         # timeout
-        pool = Pool(processes=1 if options.disable_parallel_run else len(config))
+        pool = None if options.disable_parallel_run else Pool(len(config))
         return_codes = []
         tmp_dirs = []
 
@@ -588,23 +588,29 @@ def test_distributed(test_module, test_directory, options):
                         )
 
                     mpiexec = ["mpiexec", "-n", "3", noprefix_opt, allowrunasroot_opt]
-                    return_code = pool.apply_async(
-                        run_test,
-                        args=(test_module, test_directory, options),
-                        kwds={
-                            "launcher_cmd": mpiexec,
-                            "env": os.environ.copy(),
-                        }
-                    )
+                    if pool:
+                        return_code = pool.apply_async(
+                            run_test,
+                            args=(test_module, test_directory, options),
+                            kwds={
+                                "launcher_cmd": mpiexec,
+                                "env": os.environ.copy(),
+                            }
+                        )
+                    else:
+                        return_code = run_test(test_module, test_directory, options, launcher_cmd=mpiexec)
                 else:
-                    return_code = pool.apply_async(
-                        run_test,
-                        args=(test_module, test_directory, options),
-                        kwds={
-                            "extra_unittest_args": ["--subprocess"],
-                            "env": os.environ.copy(),
-                        }
-                    )
+                    if pool:
+                        return_code = pool.apply_async(
+                            run_test,
+                            args=(test_module, test_directory, options),
+                            kwds={
+                                "extra_unittest_args": ["--subprocess"],
+                                "env": os.environ.copy(),
+                            }
+                        )
+                    else:
+                        return_code = run_test(test_module, test_directory, options, extra_unittest_args=["--subprocess"])
 
                 return_codes.append(return_code)
 
@@ -612,9 +618,10 @@ def test_distributed(test_module, test_directory, options):
                 os.environ.clear()
                 os.environ.update(old_environ)
 
-        pool.close()
-        # Close the pool and wait for all the processes to finish
-        pool.join()
+        if pool:
+            pool.close()
+            # Close the pool and wait for all the processes to finish
+            pool.join()
 
         for tmp_dir in tmp_dirs:
             shutil.rmtree(tmp_dir)
