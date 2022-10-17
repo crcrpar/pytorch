@@ -34,6 +34,17 @@ C10_HOST_DEVICE C10_ALWAYS_INLINE scalar_t lerp(scalar_t self_, scalar_t end_, w
       : end - (end - self) * (opmath_t(1) - weight);
 }
 
+// Ref: [GPU Pro Tip: Lerp Faster in C++](https://developer.nvidia.com/blog/lerp-faster-cuda/)
+template<>
+C10_HOST_DEVICE C10_ALWAYS_INLINE float lerp(float self_, float end_, float weight_) {
+  return fma(weight_, end_, fma(-weight_, self_, self_));
+}
+
+template<>
+C10_HOST_DEVICE C10_ALWAYS_INLINE double lerp(double self_, double end_, double weight_) {
+  return fma(weight_, end_, fma(-weight_, self_, self_));
+}
+
 using lerp_fn_scalar = void (*)(
     at::TensorIteratorBase& iter,
     const Scalar& weight);
