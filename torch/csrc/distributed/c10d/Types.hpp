@@ -26,6 +26,7 @@ struct NCCLPreMulSumSupplement : _SupplementBase {
   NCCLPreMulSumSupplement(std::vector<at::Tensor> f) : tensor_factors{std::move(f)} {}
 };
 
+
 // Other ReduceOps that need different supplementary data can also
 // derive from _SupplementBase.
 struct TORCH_API ReduceOp : torch::CustomClassHolder {
