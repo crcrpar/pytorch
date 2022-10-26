@@ -235,111 +235,7 @@ void _register_builtin_comm_hook(
   reducer.register_builtin_comm_hook(comm_hook_type);
 }
 
-typedef struct {
-  PyTypeObject head;
-} _ReduceOpMetaclass_t;
-
-int _ReduceOpMetaclass_init(_ReduceOpMetaclass_t *cls, PyObject *args, PyObject *kwargs) {
-  if (PyType_Type.tp_init((PyObject*)cls, args, kwargs) < 0) {
-    return -1;
-  }
-  std::cerr << "I'm called on class construction time!\n";
-  return 0;
-}
-
-static PyObject *_ReduceOpMetaInstanceCheck(PyObject *self, PyObject *args) {
-  PyTypeObject* pto = (PyTypeObject*)args;
-  printf("_ReduceOpMetaInstanceCheck %s\n", pto->tp_name);
-  if (pto->tp_name == "RedOpType" || pto->tp_name == "ReduceOp") {
-    return Py_True;
-  }
-  return Py_False;
-}
-
-static PyMethodDef _ReduceOpMetaclassCustomeMethods[] = {
-  {"__instancecheck__", (PyCFunction) _ReduceOpMetaInstanceCheck, METH_CLASS,
-   "Override `__instancecheck__` so that `RedOpType` is regarded as `ReduceOp`"
-  },
-  {NULL}  /* Sentinel */
-};
-
-static PyTypeObject _ReduceOpMetaclass = {
-  PyVarObject_HEAD_INIT(NULL, 0)
-    "torch._C._distributed_c10d._ReduceOpMetaclass",
-    0,
-    0,
-    0,                                          /* tp_dealloc */
-    0,                                          /* tp_print */
-    0,                                          /* tp_getattr */
-    0,                                          /* tp_setattr */
-    0,                                          /* tp_reserved */
-    0,                                          /* tp_repr */
-    0,                                          /* tp_as_number */
-    0,                                          /* tp_as_sequence */
-    0,                                          /* tp_as_mapping */
-    0,                                          /* tp_hash */
-    0,                                          /* tp_call */
-    0,                                          /* tp_str */
-    0,                                          /* tp_getattro */
-    0,                                          /* tp_setattro */
-    0,                                          /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,   /* tp_flags */
-    0,                                          /* tp_doc */
-    0,                                          /* tp_traverse */
-    0,                                          /* tp_clear */
-    0,                                          /* tp_richcompare */
-    0,                                          /* tp_weaklistoffset */
-    0,                                          /* tp_iter */
-    0,                                          /* tp_iternext */
-    _ReduceOpMetaclassCustomeMethods,           /* tp_methods */
-    0,                                          /* tp_members */
-    0,                                          /* tp_getset */
-    NULL,                                       /* tp_base */
-    0,                                          /* tp_dict */
-    0,                                          /* tp_descr_get */
-    0,                                          /* tp_descr_set */
-    0,                                          /* tp_dictoffset */
-    (initproc)_ReduceOpMetaclass_init,          /* tp_init */
-    0,                                          /* tp_alloc */
-    0                                           /* tp_new */
-};
-// }
-//
-// PyTypeObject* GetReduceOpInstanceCheckMetaClass() {
-//   static auto* metaclass = [] {
-//       PyTypeObject* base_metaclass =
-//           pybind11::detail::get_internals().default_metaclass;
-//       base_metaclass->tp_methods = _ReduceOpMetaclassCustomeMethods;
-//       PyType_Slot slots[] = {
-//         {Py_tp_base, base_metaclass},
-//         // {Py_mp_subscript,
-//         //   (void*)+[](PyObject* self, PyObject* arg) -> PyObject* {
-//         //     auto arg_type = arg->ob_type;
-//         //     auto arg_type_1 = (PyTypeObject *)arg;
-//         //     auto arg_type_name = arg_type_1->tp_name;
-//         //     printf("__instancecheck__ tp_name: %s\n", arg_type_name);
-//         //     auto method = py::reinterpret_steal<py::object>(
-//         //         PyObject_GetAttrString(self, "__instancecheck__"));
-//         //     if (!method.ptr()) {
-//         //       return nullptr;
-//         //     }
-//         //     return PyObject_CallFunctionObjArgs(method.ptr(), arg, nullptr);
-//         //   }
-//         // },
-//         {0, NULL},
-//       };
-//       // PyType_Spec spec = {};
-//       // spec.name = "torch._C._distributed_c10d._ReduceOpMetaclass";
-//       // spec.basicsize = base_metaclass->tp_basicsize;
-//       // spec.flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
-//       // spec.slots = slots;
-//       // spec.tp_methods = _ReduceOpMetaclassCustomeMethods;
-//       // PyTypeObject* metaclass = (PyTypeObject*)PyType_FromSpec(&spec);
-//       // if (!metaclass) throw py::error_already_set();
-//       return base_metaclass;
-//   }();
-//   return metaclass;
-// }
+struct _ReduceOpMetaclass {};
 
 PyObject* c10d_init(PyObject* _unused, PyObject* noargs) {
   C10_LOG_API_USAGE_ONCE("c10d.python.import");
@@ -621,10 +517,14 @@ An enum-like class for built-in communication hooks: ``ALLREDUCE`` and ``FP16_CO
           R"(Sets the debug level of the torch.distributed package from the
           ``TORCH_DISTRIBUTED_DEBUG`` environment variable.)");
 
+  py::class_<_ReduceOpMetaclass> _reduce_op_metaclass(
+      module, "_ReduceOpMetaclass",
+      py::handle((PyObject *)py::detail::get_internals().default_metaclass)
+  );
+  _reduce_op_metaclass.def(py::init());
   py::class_<::c10d::ReduceOp> reduce_op(
       module, "ReduceOp",
-      py::metaclass((PyObject *)(&_ReduceOpMetaclass)), R"(
-      // py::metaclass((PyObject *)GetReduceOpInstanceCheckMetaClass()), R"(
+      py::metaclass(_reduce_op_metaclass), R"(
 An enum-like class for available reduction operations: ``SUM``, ``PRODUCT``,
 ``MIN``, ``MAX``, ``BAND``, ``BOR``, ``BXOR``, and ``PREMUL_SUM``.
 
