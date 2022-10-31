@@ -235,7 +235,9 @@ void _register_builtin_comm_hook(
   reducer.register_builtin_comm_hook(comm_hook_type);
 }
 
-struct _ReduceOpMetaclass {};
+struct _ReduceOpMetaclass {
+  // PyTypeObject head;
+};
 
 PyObject* c10d_init(PyObject* _unused, PyObject* noargs) {
   C10_LOG_API_USAGE_ONCE("c10d.python.import");
@@ -519,11 +521,26 @@ An enum-like class for built-in communication hooks: ``ALLREDUCE`` and ``FP16_CO
 
   py::class_<_ReduceOpMetaclass> _reduce_op_metaclass(
       module, "_ReduceOpMetaclass",
-      py::handle((PyObject *)py::detail::get_internals().default_metaclass)
+      // py::metaclass((PyObject *)py::detail::get_internals().default_metaclass)
+      py::custom_type_setup([](PyHeapTypeObject *heap_type) {
+        auto *type = &heap_type->ht_type;
+        type->tp_flags |= Py_TPFLAGS_BASETYPE;
+        // type->tp_traverse = [](PyObject *self_base, visitproc visit, void *arg) {
+        //     auto &self = py::cast<OwnsPythonObjects&>(py::handle(self_base));
+        //     Py_VISIT(self.value.ptr());
+        //     return 0;
+        // };
+        // type->tp_clear = [](PyObject *self_base) {
+        //     auto &self = py::cast<OwnsPythonObjects&>(py::handle(self_base));
+        //     self.value = py::none();
+        //     return 0;
+        // };
+    })
   );
   _reduce_op_metaclass.def(py::init());
   py::class_<::c10d::ReduceOp> reduce_op(
       module, "ReduceOp",
+      // py::metaclass(_reduce_op_metaclass), R"(
       py::metaclass(_reduce_op_metaclass), R"(
 An enum-like class for available reduction operations: ``SUM``, ``PRODUCT``,
 ``MIN``, ``MAX``, ``BAND``, ``BOR``, ``BXOR``, and ``PREMUL_SUM``.
