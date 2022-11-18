@@ -18,6 +18,7 @@ from torch.optim.lr_scheduler import LambdaLR, MultiplicativeLR, SequentialLR, S
     LRScheduler, CyclicLR, CosineAnnealingWarmRestarts, OneCycleLR, ChainedScheduler, PolynomialLR, \
     EPOCH_DEPRECATION_WARNING
 from torch.optim.swa_utils import AveragedModel, SWALR, update_bn
+from torch.testing._internal.common_device_type import onlyCUDA
 from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_UBSAN, load_tests, \
     parametrize, instantiate_parametrized_tests, gradcheck, skipIfRocm
 # load_tests from common_utils is used to automatically filter tests for
@@ -508,7 +509,7 @@ class TestOptim(TestCase):
                                             torch.nn.Sigmoid())
                 model.to(dtype=torch.float64, device=device)
                 params_with_foreach = deepcopy(params)
-                params_with_foreach["foreach"] = foreach
+                params_with_foreach[flag] = foreach
                 optimizer = optimizer_constructor(model.parameters(), **params_with_foreach)
 
                 for _ in range(kIterations):
@@ -1100,10 +1101,8 @@ class TestOptim(TestCase):
             params, grads, exp_avgs, exp_avg_sqs = [[torch.ones((1,), device="cuda") for _ in range(num_tensors)] for _ in range(4)]
             max_exp_avg_sqs = [torch.ones((1,), device="cuda") for _ in range(num_tensors)] if amsgrad else []
             state_steps = [torch.ones((1,), dtype=torch.float32, device="cuda") for _ in range(num_tensors)]
-            grad_scale = torch.cuda.amp.grad_scaler._MultiDeviceReplicator(
-                torch.ones((1,), dtype=torch.float32, device="cuda"))
-            found_inf = torch.cuda.amp.grad_scaler._MultiDeviceReplicator(
-                torch.ones((1,), dtype=torch.float32, device="cuda"))
+            grad_scale = torch.ones((1,), dtype=torch.float32, device="cuda")
+            found_inf = torch.ones((1,), dtype=torch.float32, device="cuda")
 
             adam.adam(
                 params,
@@ -3189,6 +3188,37 @@ class TestDifferentiableOptimizer(TestCase):
             (p, grad, state, torch.optim.RAdam,
              {'lr': 0.9, 'differentiable': True}, *state.values())
         )
+
+    @onlyCUDA
+    @unittest.skipIf(torch.cuda.device_count() < 2, "Requires multiple CUDA devices")
+    @parametrize("optimizer_ctor", (torch.optim.Adam,))
+    @parametrize("weight_decay", (1.0, 0.0))
+    @parametrize("amsgrad", (True, False))
+    def test_fused_optimizers_with_params_on_different_devices(self, optimizer_ctor, weight_decay, amsgrad):
+        params_c = [
+            Parameter(torch.randn(10, 5, device=torch.device("cuda", i % 2)))
+            for i in range(5)
+        ]
+        grads_c = [torch.rand_like(t) for t in params_c]
+        with torch.no_grad():
+            params_t = [t.clone().detach() for t in params_c]
+            grads_t = [t.clone().detach() for t in grads_c]
+
+        optim_c = optimizer_ctor(params_c, weight_decay=weight_decay, amsgrad=amsgrad, fused=False)
+        optim_t = optimizer_ctor(params_t, weight_decay=weight_decay, amsgrad=amsgrad, fused=True)
+
+        for _ in range(3):
+            optim_c.zero_grad(set_to_none=True)
+            optim_t.zero_grad(set_to_none=True)
+            for p, g in zip(params_c, grads_t):
+                p.grad = g
+            for p, g in zip(params_t, grads_t):
+                p.grad = g
+
+            optim_c.step()
+            optim_t.step()
+
+        self.assertEqual(params_c, params_t)
 
 
 if __name__ == '__main__':
