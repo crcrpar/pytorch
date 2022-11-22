@@ -18,6 +18,15 @@
 #define HAS_NCCL_BF16_DATATYPE 0
 #endif
 
+#if !defined(USE_ROCM)
+#if defined(NCCL_MAJOR) && (NCCL_MAJOR == 2) && defined(NCCL_MINOR) && \
+    (NCCL_MINOR >= 14)
+#define ENABLE_NCCL_FAULT_TOLERANCE
+#elif defined(NCCL_MAJOR) && (NCCL_MAJOR >= 3)
+#define ENABLE_NCCL_FAULT_TOLERANCE
+#endif
+#endif
+
 namespace torch {
 namespace cuda {
 namespace nccl {
@@ -46,7 +55,13 @@ enum class ncclResult {
   InternalError = 3,
   InvalidArgument = 4,
   InvalidUsage = 5,
+#if !defined(ENABLE_NCCL_ERROR_CHECKING)
   NumResults = 6
+#else
+  RemoteError = 6,
+  InProgress = 7,
+  NumResults = 8
+#endif // ENABLE_NCCL_FAULT_TOLERANCE
 };
 
 /* Reduction operation selector */
@@ -86,11 +101,19 @@ namespace detail {
 
 TORCH_CUDA_CPP_API void throw_nccl_error(ncclResult status);
 
+#if !defined(ENABLE_NCCL_FAULT_TOLERANCE)
 static inline void NCCL_CHECK(ncclResult status) {
   if (status != ncclResult::Success) {
     throw_nccl_error(status);
   }
 }
+#else
+static inline void NCCL_CHECK(ncclResult status) {
+  if (status != ncclResult::Success && state != ncclResult::InProgress) {
+    throw_nccl_error(status);
+  }
+}
+#endif // ENABLE_NCCL_FAULT_TOLERANCE
 
 TORCH_CUDA_CPP_API at::ArrayRef<ncclComm_t> get_communicators(
     at::TensorList inputs);

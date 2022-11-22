@@ -42,6 +42,12 @@ ncclResult_t to_nccl_result(torch::cuda::nccl::ncclResult var) {
       return ncclResult_t::ncclInvalidArgument;
     case torch::cuda::nccl::ncclResult::InvalidUsage:
       return ncclResult_t::ncclInvalidUsage;
+#if defined(ENABLE_NCCL_FAULT_TOLERANCE)
+    case torch::cuda::nccl::ncclResult::RemoteError:
+      return ncclResult_t::ncclRemoteError;
+    case torch::cuda::nccl::ncclResult::InProgress:
+      return ncclResult_t::ncclInProgress;
+#endif
     case torch::cuda::nccl::ncclResult::NumResults:
       return ncclResult_t::ncclNumResults;
     default:
@@ -63,6 +69,12 @@ torch::cuda::nccl::ncclResult from_nccl_result(ncclResult_t var) {
       return torch::cuda::nccl::ncclResult::InvalidArgument;
     case ncclInvalidUsage:
       return torch::cuda::nccl::ncclResult::InvalidUsage;
+#if defined(ENABLE_NCCL_FAULT_TOLERANCE)
+    case ncclRemoteError:
+      return torch::cuda::nccl::ncclResult::RemoteError;
+    case ncclInProgress:
+      return torch::cuda::nccl::ncclResult::InProgress;
+#endif
     case ncclNumResults:
       return torch::cuda::nccl::ncclResult::NumResults;
     default:
