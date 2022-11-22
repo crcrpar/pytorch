@@ -111,15 +111,10 @@ class Adam(Optimizer):
             raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
         if not 0.0 <= weight_decay:
             raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
-        defaults = dict(lr=lr, betas=betas, eps=eps,
-                        weight_decay=weight_decay, amsgrad=amsgrad,
-                        maximize=maximize, foreach=foreach, capturable=capturable,
-                        differentiable=differentiable, fused=fused)
-        super(Adam, self).__init__(params, defaults)
 
         if fused:
             if differentiable:
-                raise RuntimeError("`fused` cannot be `differentiable`")
+                raise RuntimeError("`differentiable` cannot be `True` when `fused` is `True`")
             self._step_supports_amp_scaling = True
             # TODO(crcrpar): [low prec params & their higher prec copy]
             # Suppor AMP with FP16/BF16 model params which would need
@@ -130,6 +125,15 @@ class Adam(Optimizer):
                 for pg in self.param_groups for p in pg['params']
             ):
                 raise RuntimeError("FusedAdam requires all the params to be CUDA, floating point")
+            # `fused` path by default is compatible with CUDA Graphs.
+            if not capturable:
+                capturable = True
+
+        defaults = dict(lr=lr, betas=betas, eps=eps,
+                        weight_decay=weight_decay, amsgrad=amsgrad,
+                        maximize=maximize, foreach=foreach, capturable=capturable,
+                        differentiable=differentiable, fused=fused)
+        super(Adam, self).__init__(params, defaults)
 
     def __setstate__(self, state):
         super().__setstate__(state)
