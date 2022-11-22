@@ -1586,19 +1586,24 @@ Call this whenever a new thread is created in order to propagate values from
       });
 
   py_module.def(
-      "_group_tensors_by_device_and_dtype", [](const std::vector<std::vector<at::Tensor>>& tensorlists, const bool should_cuda=false) {
-        using DtypeTensorLists = std::unordered_map<at::ScalarType, std::vector<std::vector<at::Tensor>>>;
+      "_group_tensors_by_device_and_dtype",
+      [](const std::vector<std::vector<at::Tensor>>& tensorlists,
+         const bool should_cuda = false) {
+        using DtypeTensorLists = std::
+            unordered_map<at::ScalarType, std::vector<std::vector<at::Tensor>>>;
         std::unordered_map<at::Device, DtypeTensorLists> device_dtype_tensors;
         const auto num_tensorlists = tensorlists.size();
         const auto num_tensors = tensorlists[0].size();
         TORCH_CHECK(num_tensorlists > 0 && num_tensors > 0);
-        TORCH_CHECK(
-            std::all_of(
-              tensorlists.cbegin(), tensorlists.cend(),
-              [&num_tensors](const auto &tensorlist) { return tensorlist.size() == num_tensors; }));
+        TORCH_CHECK(std::all_of(
+            tensorlists.cbegin(),
+            tensorlists.cend(),
+            [&num_tensors](const auto& tensorlist) {
+              return tensorlist.size() == num_tensors;
+            }));
 
-        for (const auto & i : c10::irange(num_tensors)) {
-          const auto & tensor = tensorlists[0][i];
+        for (const auto& i : c10::irange(num_tensors)) {
+          const auto& tensor = tensorlists[0][i];
           const auto cur_device = tensor.device();
           if (should_cuda) {
             TORCH_CHECK(cur_device.is_cuda());
@@ -1607,20 +1612,23 @@ Call this whenever a new thread is created in order to propagate values from
           const auto cur_sizes = tensor.sizes();
           const auto cur_strides = tensor.strides();
           if (!device_dtype_tensors.count(cur_device)) {
-            auto empty_lists = std::vector<std::vector<at::Tensor>>(num_tensorlists);
-            // n.b. Assume generally lists of tensors of an optimizer are on an identical device.
-            for (auto & v : empty_lists) {
+            auto empty_lists =
+                std::vector<std::vector<at::Tensor>>(num_tensorlists);
+            // n.b. Assume generally lists of tensors of an optimizer are on an
+            // identical device.
+            for (auto& v : empty_lists) {
               v.reserve(num_tensors);
             }
             DtypeTensorLists init_map{{cur_dtype, empty_lists}};
             device_dtype_tensors.insert({cur_device, init_map});
           }
-          for (const auto & j : c10::irange(num_tensorlists)) {
-            const auto & t = tensorlists[j][i];
+          for (const auto& j : c10::irange(num_tensorlists)) {
+            const auto& t = tensorlists[j][i];
             TORCH_CHECK(
                 t.device() == cur_device && t.scalar_type() == cur_dtype &&
-                t.layout() == at::kStrided && t.is_non_overlapping_and_dense() &&
-                t.sizes() == cur_sizes && t.strides() == cur_strides);
+                t.layout() == at::kStrided &&
+                t.is_non_overlapping_and_dense() && t.sizes() == cur_sizes &&
+                t.strides() == cur_strides);
             device_dtype_tensors[cur_device][cur_dtype][j].push_back(t);
           }
         }

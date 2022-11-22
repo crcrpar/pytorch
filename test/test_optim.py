@@ -18,7 +18,6 @@ from torch.optim.lr_scheduler import LambdaLR, MultiplicativeLR, SequentialLR, S
     LRScheduler, CyclicLR, CosineAnnealingWarmRestarts, OneCycleLR, ChainedScheduler, PolynomialLR, \
     EPOCH_DEPRECATION_WARNING
 from torch.optim.swa_utils import AveragedModel, SWALR, update_bn
-from torch.testing._internal.common_device_type import onlyCUDA
 from torch.testing._internal.common_utils import TestCase, run_tests, TEST_WITH_UBSAN, load_tests, \
     parametrize, instantiate_parametrized_tests, gradcheck, skipIfRocm
 # load_tests from common_utils is used to automatically filter tests for
@@ -3189,12 +3188,7 @@ class TestDifferentiableOptimizer(TestCase):
              {'lr': 0.9, 'differentiable': True}, *state.values())
         )
 
-    @onlyCUDA
-    @unittest.skipIf(torch.cuda.device_count() < 2, "Requires multiple CUDA devices")
-    @parametrize("optimizer_ctor", (torch.optim.Adam,))
-    @parametrize("weight_decay", (1.0, 0.0))
-    @parametrize("amsgrad", (True, False))
-    def test_fused_optimizers_with_params_on_different_devices(self, optimizer_ctor, weight_decay, amsgrad):
+    def _test_fused_optimizers_with_params_on_different_devices(self, optimizer_ctor, weight_decay, amsgrad):
         params_c = [
             Parameter(torch.randn(10, 5, device=torch.device("cuda", i % 2)))
             for i in range(5)
@@ -3212,13 +3206,19 @@ class TestDifferentiableOptimizer(TestCase):
             optim_t.zero_grad(set_to_none=True)
             for p, g in zip(params_c, grads_t):
                 p.grad = g
+            optim_c.step()
+
             for p, g in zip(params_t, grads_t):
                 p.grad = g
-
-            optim_c.step()
             optim_t.step()
 
         self.assertEqual(params_c, params_t)
+
+    @unittest.skipIf(torch.cuda.device_count() < 2, "Requires multiple CUDA devices")
+    def test_fused_optimizers_with_params_on_different_devices(self):
+        for optimizer_ctor, weight_decay, amsgrad in itertools.product((torch.optim.Adam,), (1.0, 0.0), (True, False)):
+            with self.subTest(optimizer_ctor=optimizer_ctor, weight_decay=weight_decay, asmgrad=amsgrad):
+                self._test_fused_optimizers_with_params_on_different_devices(optimizer_ctor, weight_decay, amsgrad)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,5 @@
-from collections import defaultdict
 import math
-from typing import cast, List, Optional, Dict, Tuple
+from typing import cast, List, Optional
 
 import torch
 from torch import Tensor
@@ -116,15 +115,6 @@ class Adam(Optimizer):
             if differentiable:
                 raise RuntimeError("`differentiable` cannot be `True` when `fused` is `True`")
             self._step_supports_amp_scaling = True
-            # TODO(crcrpar): [low prec params & their higher prec copy]
-            # Suppor AMP with FP16/BF16 model params which would need
-            # higher prec copy of params to do update math in higher prec to
-            # alleviate the loss of information.
-            if not all(
-                p.is_cuda and torch.is_floating_point(p)
-                for pg in self.param_groups for p in pg['params']
-            ):
-                raise RuntimeError("FusedAdam requires all the params to be CUDA, floating point")
             # `fused` path by default is compatible with CUDA Graphs.
             if not capturable:
                 capturable = True
@@ -134,6 +124,17 @@ class Adam(Optimizer):
                         maximize=maximize, foreach=foreach, capturable=capturable,
                         differentiable=differentiable, fused=fused)
         super(Adam, self).__init__(params, defaults)
+
+        if fused:
+            # TODO(crcrpar): [low prec params & their higher prec copy]
+            # Suppor AMP with FP16/BF16 model params which would need
+            # higher prec copy of params to do update math in higher prec to
+            # alleviate the loss of information.
+            if not all(
+                p.is_cuda and torch.is_floating_point(p)
+                for pg in self.param_groups for p in pg['params']
+            ):
+                raise RuntimeError("FusedAdam requires all the params to be CUDA, floating point")
 
     def __setstate__(self, state):
         super().__setstate__(state)
