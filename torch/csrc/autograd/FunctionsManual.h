@@ -1032,6 +1032,85 @@ Tensor take_backward(
     const Tensor& self,
     const Tensor& indices);
 
+std::vector<Tensor> foreach_tensor_sqrt_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
+std::vector<Tensor> foreach_tensor_exp_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
+std::vector<Tensor> foreach_tensor_abs_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
+std::vector<Tensor> foreach_tensor_acos_backward_slow(
+    const variable_list& grads,
+    const variable_list& result,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_asin_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_atan_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_ceil_backward_slow(
+    const variable_list& grads);
+std::vector<Tensor> foreach_tensor_cos_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_cosh_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_erf_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_erfc_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_expm1_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
+std::vector<Tensor> foreach_tensor_floor_backward_slow(
+    const variable_list& grads);
+std::vector<Tensor> foreach_tensor_log_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_log10_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_log1p_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_log2_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_neg_backward_slow(
+    const variable_list& grads);
+std::vector<Tensor> foreach_tensor_tan_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
+std::vector<Tensor> foreach_tensor_tanh_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
+std::vector<Tensor> foreach_tensor_sin_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_sinh_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_round_backward_slow(
+    const variable_list& grads);
+std::vector<Tensor> foreach_tensor_lgamma_backward_slow(
+    const variable_list& grads,
+    const variable_list& tensors);
+std::vector<Tensor> foreach_tensor_frac_backward_slow(
+    const variable_list& grads);
+std::vector<Tensor> foreach_tensor_trunc_backward_slow(
+    const variable_list& grads);
+std::vector<Tensor> foreach_tensor_reciprocal_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
+std::vector<Tensor> foreach_tensor_sigmoid_backward_slow(
+    const variable_list& grads,
+    const variable_list& result);
 } // namespace details
 } // namespace generated
 } // namespace autograd
