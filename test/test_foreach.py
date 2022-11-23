@@ -389,6 +389,15 @@ class TestForeach(TestCase):
         self._regular_unary_test(dtype, op, ref, inputs, is_fastpath)
         self._inplace_unary_test(dtype, inplace_op, inplace_ref, inputs, is_fastpath)
 
+        if opinfo.supports_autograd and dtype in floating_types():
+            tensors = opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath, same_size=True)
+            tensors = [t.requires_grad_() for t in tensors]
+            ref_tensors = [t.clone().detach().requires_grad_() for t in tensors]
+
+            sum(op.func(tensors)).mean().backward()
+            sum([ref.func(t) for t in ref_tensors]).mean().backward()
+            self.assertEqual([t.grad for t in tensors], [t.grad for t in ref_tensors])
+
     @skipMeta
     @ops(foreach_unary_op_db)
     def test_unary_fastpath(self, device, dtype, op):

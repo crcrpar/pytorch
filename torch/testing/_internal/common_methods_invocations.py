@@ -7708,97 +7708,110 @@ def sample_inputs_max_unpool_grad(op_info, device, dtype, requires_grad, **kwarg
             yield sample
 
 foreach_unary_op_db: List[OpInfo] = [
-    ForeachFuncInfo('exp'),
-    ForeachFuncInfo('acos'),
-    ForeachFuncInfo('asin'),
-    ForeachFuncInfo('atan'),
-    ForeachFuncInfo('cos'),
-    ForeachFuncInfo('cosh'),
-    ForeachFuncInfo('log'),
-    ForeachFuncInfo('log10'),
-    ForeachFuncInfo('log2'),
-    ForeachFuncInfo('tan'),
-    ForeachFuncInfo('tanh'),
-    ForeachFuncInfo('sin'),
-    ForeachFuncInfo('sinh'),
+    ForeachFuncInfo('exp', supports_autograd=True),
+    ForeachFuncInfo('acos', supports_autograd=True),
+    ForeachFuncInfo('asin', supports_autograd=True),
+    ForeachFuncInfo('atan', supports_autograd=True),
+    ForeachFuncInfo('cos', supports_autograd=True),
+    ForeachFuncInfo('cosh', supports_autograd=True),
+    ForeachFuncInfo('log', supports_autograd=True),
+    ForeachFuncInfo('log10', supports_autograd=True),
+    ForeachFuncInfo('log2', supports_autograd=True),
+    ForeachFuncInfo('tan', supports_autograd=True),
+    ForeachFuncInfo('tanh', supports_autograd=True),
+    ForeachFuncInfo('sin', supports_autograd=True),
+    ForeachFuncInfo('sinh', supports_autograd=True),
 
     ForeachFuncInfo(
         'neg',
         dtypes=all_types_and_complex(),
         dtypesIfCUDA=all_types_and_complex(),
         sample_inputs_func=sample_inputs_foreach,
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'sqrt',
         dtypes=floating_and_complex_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_and_complex_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'ceil',
         dtypes=all_types_and(torch.bfloat16),
         dtypesIfCUDA=all_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'erf',
         dtypes=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'erfc',
         dtypes=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'expm1',
         dtypes=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'floor',
         dtypes=all_types_and(torch.bfloat16),
         dtypesIfCUDA=all_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'log1p',
         dtypes=floating_and_complex_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_and_complex_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'round',
         dtypes=all_types_and(torch.bfloat16),
         dtypesIfCUDA=all_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'frac',
         dtypes=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'reciprocal',
         dtypes=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'sigmoid',
         dtypes=floating_types_and(torch.bfloat16),
         dtypesIfCUDA=floating_types_and(torch.half),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
         'trunc',
         dtypes=all_types_and(torch.bfloat16),
         dtypesIfCUDA=all_types_and(torch.half, torch.bfloat16),
+        supports_autograd=True,
     ),
 
     ForeachFuncInfo(
@@ -7807,6 +7820,7 @@ foreach_unary_op_db: List[OpInfo] = [
         dtypesIfCUDA=all_types_and_complex_and(torch.bfloat16, torch.half, torch.bool),
         supports_forward_ad=True,
         supports_fwgrad_bwgrad=True,
+        supports_autograd=True,
     ),
 ]
 

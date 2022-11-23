@@ -2923,3 +2923,87 @@
 - name: _reshape_copy(Tensor self, SymInt[] size) -> Tensor
   self: grad.reshape_symint(self.sym_sizes())
   result: auto_linear
+
+- name: _foreach_abs(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_abs_backward_slow(grads, self)
+
+- name: _foreach_acos(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_acos_backward_slow(grads, result, self)
+
+- name: _foreach_asin(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_asin_backward_slow(grads, self)
+
+- name: _foreach_atan(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_atan_backward_slow(grads, self)
+
+- name: _foreach_ceil(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_ceil_backward_slow(grads)
+
+- name: _foreach_cos(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_cos_backward_slow(grads, self)
+
+- name: _foreach_cosh(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_cosh_backward_slow(grads, self)
+
+- name: _foreach_erf(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_erf_backward_slow(grads, self)
+
+- name: _foreach_erfc(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_erfc_backward_slow(grads, self)
+
+- name: _foreach_exp(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_exp_backward_slow(grads, result)
+
+- name: _foreach_expm1(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_expm1_backward_slow(grads, result)
+
+- name: _foreach_floor(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_floor_backward_slow(grads)
+
+- name: _foreach_frac(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_frac_backward_slow(grads)
+
+- name: _foreach_lgamma(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_lgamma_backward_slow(grads, self)
+
+- name: _foreach_log(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_log_backward_slow(grads, self)
+
+- name: _foreach_log10(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_log10_backward_slow(grads, self)
+
+- name: _foreach_log1p(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_log1p_backward_slow(grads, self)
+
+- name: _foreach_log2(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_log2_backward_slow(grads, self)
+
+- name: _foreach_neg(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_neg_backward_slow(grads)
+
+- name: _foreach_reciprocal(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_reciprocal_backward_slow(grads, result)
+
+- name: _foreach_round(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_round_backward_slow(grads)
+
+- name: _foreach_sigmoid(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_sigmoid_backward_slow(grads, result)
+
+- name: _foreach_sin(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_sin_backward_slow(grads, self)
+
+- name: _foreach_sinh(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_sinh_backward_slow(grads, self)
+
+- name: _foreach_sqrt(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_sqrt_backward_slow(grads, result)
+
+- name: _foreach_tan(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_tan_backward_slow(grads, result)
+
+- name: _foreach_tanh(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_tanh_backward_slow(grads, result)
+
+- name: _foreach_trunc(Tensor[] self) -> Tensor[]
+  self: foreach_tensor_trunc_backward_slow(grads)
