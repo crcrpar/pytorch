@@ -6648,6 +6648,129 @@ Tensor to_sparse_backward(
   }
 }
 
+std::vector<Tensor> foreach_tensor_add_backward_slow(
+    const variable_list self,
+    const variable_list grads,
+    const Scalar alpha) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(
+        handle_r_to_c(self[i], maybe_multiply(grads[i], alpha.conj())));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_sub_backward_slow(
+    const variable_list self,
+    const variable_list grads,
+    const Scalar alpha,
+    const bool negate) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        self[i], maybe_multiply(negate ? -grads[i] : grads[i], alpha.conj())));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_mul_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(
+        mul_tensor_backward(grads[i], other[i], self[i].scalar_type()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_mul_backward_slow(
+    const variable_list self,
+    const Scalar scalar,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  const auto scalar_tensor = at::lift_fresh(at::scalar_to_tensor(scalar));
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(
+        mul_tensor_backward(grads[i], scalar_tensor, self[i].scalar_type()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_mul_backward_slow(
+    const variable_list self,
+    const std::vector<Scalar>& scalars,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(mul_tensor_backward(
+        grads[i],
+        at::lift_fresh(at::scalar_to_tensor(scalars[i])),
+        self[i].scalar_type()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_div_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(
+        div_tensor_self_backward(grads[i], other[i], self[i].scalar_type()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_div_backward_slow(
+    const variable_list self,
+    const Scalar scalar,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  const auto scalar_tensor = at::lift_fresh(at::scalar_to_tensor(scalar));
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(div_tensor_self_backward(
+        grads[i], scalar_tensor, self[i].scalar_type()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_div_backward_slow(
+    const variable_list self,
+    const std::vector<Scalar>& scalars,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(div_tensor_self_backward(
+        grads[i],
+        at::lift_fresh(at::scalar_to_tensor(scalars[i])),
+        self[i].scalar_type()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_div_other_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(self.size())) {
+    grad_inputs.emplace_back(
+        div_tensor_other_backward(grads[i], self[i], other[i]));
+  }
+  return grad_inputs;
+}
 } // namespace details
 } // namespace generated
 } // namespace autograd

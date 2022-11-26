@@ -108,6 +108,56 @@ class TestForeach(TestCase):
                 else:
                     self.assertEqual(expected, actual)
 
+    def _test_binary_op_tensorlists(self, device, dtype, opinfo, N, is_fastpath, disable_fastpath):
+        n_expected_cudaLaunchKernels = N if disable_fastpath else 1
+        op, ref, inplace_op, inplace_ref = self._get_funcs(opinfo, n_expected_cudaLaunchKernels)
+        inputs = [
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+        ]
+        self._binary_test(dtype, op, ref, inputs, is_fastpath, is_inplace=False)
+        self._binary_test(dtype, inplace_op, inplace_ref, inputs, is_fastpath, is_inplace=True)
+        if opinfo.supports_alpha_param:
+            alpha = None
+            if dtype in integral_types():
+                alpha = 3
+            elif dtype.is_complex:
+                alpha = complex(3, 3)
+            else:
+                alpha = 3.14
+            self._binary_test(dtype, op, ref, inputs, is_fastpath, is_inplace=False, alpha=alpha)
+            self._binary_test(dtype, inplace_op, inplace_ref, inputs, is_fastpath, is_inplace=True, alpha=alpha)
+
+        # Tests of implicit broadcasting
+        # When sizes of tensors don't match, foreach functions are supposed to choose slow path
+        # even if this methods's argument `is_fastpath` is True.
+        # `cudaLaunchKernel` will be equal to `N`. For assert in `ForeachFuncWrapper` to pass,
+        # we pass `is_fastpath and disable_fastpath` to `_binary_test`'s argument of is_fastpath.
+        # as n_expected_cudaLaunchKernels is N if disable_fastpath.
+        inputs = [
+            opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath),
+            [
+                make_tensor((N - i, 1), device=device, dtype=dtype, noncontiguous=not is_fastpath) for i in range(N)
+            ],
+        ]
+        self._binary_test(dtype, op, ref, inputs, is_fastpath and disable_fastpath, is_inplace=False)
+        self._binary_test(
+            dtype, inplace_op, inplace_ref, inputs, is_fastpath and disable_fastpath, is_inplace=True)
+
+        if dtype not in floating_types():
+            return
+        inputs = [
+            [t.requires_grad_() for t in opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath, same_size=True)]
+            for _ in range(2)
+        ]
+        ref_inputs = [[t.clone().detach().requires_grad_() for t in tensors] for tensors in inputs]
+        outputs = op.func(*inputs)
+        sum(outputs).mean().backward()
+        ref_outputs = [ref.func(lhs, rhs) for lhs, rhs in zip(*ref_inputs)]
+        sum(ref_outputs).mean().backward()
+        self.assertEqual([t.grad for t in inputs[0]], [t.grad for t in ref_inputs[0]])
+        self.assertEqual([t.grad for t in inputs[1]], [t.grad for t in ref_inputs[1]])
+
     @skipMeta
     @ops(foreach_binary_op_db)
     @parametrize("is_fastpath", (True, False))

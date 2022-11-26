@@ -1015,6 +1015,43 @@ Tensor to_sparse_backward(
     const c10::Layout self_layout,
     const c10::OptionalArrayRef<c10::SymInt>& self_blocksize);
 
+std::vector<Tensor> foreach_tensor_add_backward_slow(
+    const variable_list self,
+    const variable_list grads,
+    const Scalar alpha);
+std::vector<Tensor> foreach_tensor_sub_backward_slow(
+    const variable_list self,
+    const variable_list grads,
+    const Scalar alpha,
+    const bool negate);
+std::vector<Tensor> foreach_tensor_mul_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_mul_backward_slow(
+    const variable_list self,
+    const Scalar scalar,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_mul_backward_slow(
+    const variable_list scalars,
+    const std::vector<Scalar> other,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_div_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_div_backward_slow(
+    const variable_list self,
+    const Scalar scalar,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_div_backward_slow(
+    const variable_list self,
+    const std::vector<Scalar>& scalars,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_div_other_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads);
 } // namespace details
 } // namespace generated
 } // namespace autograd
