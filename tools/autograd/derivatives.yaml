@@ -2987,3 +2987,43 @@
 
 - name: _foreach_trunc(Tensor[] self) -> Tensor[]
   self: foreach_tensor_trunc_backward_slow(grads)
+
+- name: _foreach_add.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+  self: foreach_tensor_add_backward_slow(self, grads, 1)
+  other: foreach_tensor_add_backward_slow(other, grads, alpha)
+
+# - name: _foreach_add.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+#   self: foreach_tensor_add_backward_slow(self, grads, 1)
+#
+# - name: _foreach_add.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+#   self: foreach_tensor_add_backward_slow(self, grads, 1)
+
+- name: _foreach_sub.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+  self: foreach_tensor_sub_backward_slow(self, grads, 1, false)
+  other: foreach_tensor_sub_backward_slow(other, grads, alpha, true)
+
+# - name: _foreach_sub.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+#   self: foreach_tensor_sub_backward_slow(self, grads, 1, false)
+#
+# - name: _foreach_sub.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+#   self: foreach_tensor_sub_backward_slow(self, grads, 1, false)
+
+- name: _foreach_mul.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  self: foreach_tensor_mul_backward_slow(self, other, grads)
+  other: foreach_tensor_mul_backward_slow(other, self, grads)
+
+# - name: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+#   self: foreach_tensor_mul_backward_slow(self, scalar, grads)
+#
+# - name: _foreach_mul.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+#   self: foreach_tensor_mul_backward_slow(self, scalars, grads)
+
+- name: _foreach_div.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  self: foreach_tensor_div_backward_slow(self, other, grads)
+  other: foreach_tensor_div_other_backward_slow(self, other, grads)
+
+# - name: _foreach_div.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+#   self: foreach_tensor_div_backward_slow(self, scalar, grads)
+#
+# - name: _foreach_div.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+#   self: foreach_tensor_div_backward_slow(self, other, grads)

@@ -170,6 +170,21 @@ class TestForeach(TestCase):
         self._binary_test(
             dtype, inplace_op, inplace_ref, inputs, is_fastpath and disable_fastpath, is_inplace=True)
 
+        if dtype not in floating_types():
+            return
+        inputs = [
+            [t.requires_grad_() for t in opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath, same_size=True)]
+            for _ in range(2)
+        ]
+        ref_inputs = [[t.clone().detach().requires_grad_() for t in tensors] for tensors in inputs]
+        outputs = op.func(*inputs)
+        sum(outputs).mean().backward()
+        ref_outputs = [ref.func(lhs, rhs) for lhs, rhs in zip(*ref_inputs)]
+        sum(ref_outputs).mean().backward()
+        self.assertEqual([t.grad for t in inputs[0]], [t.grad for t in ref_inputs[0]])
+        self.assertEqual([t.grad for t in inputs[1]], [t.grad for t in ref_inputs[1]])
+
+
     @skipMeta
     @ops(foreach_binary_op_db)
     def test_binary_op_tensorlists_fastpath(self, device, dtype, op):
