@@ -18,9 +18,6 @@ namespace at {
 class Tensor;
 using TensorList = ArrayRef<Tensor>;
 
-// class Scalar;
-// using ScalarList = ArrayRef<Scalar>;
-
 class Context;
 struct Generator;
 
