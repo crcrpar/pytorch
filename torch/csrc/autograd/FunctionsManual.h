@@ -9,6 +9,8 @@
 #include <cmath>
 #endif
 
+#include <vector>
+
 #include <ATen/ATen.h>
 #include <torch/csrc/autograd/generated/Functions.h>
 
@@ -1046,7 +1048,7 @@ std::vector<Tensor> foreach_tensor_div_backward_slow(
     const variable_list grads);
 std::vector<Tensor> foreach_tensor_div_backward_slow(
     const variable_list self,
-    const std::vector<Scalar>& scalars,
+    const std::vector<Scalar> scalars,
     const variable_list grads);
 std::vector<Tensor> foreach_tensor_div_other_backward_slow(
     const variable_list self,
