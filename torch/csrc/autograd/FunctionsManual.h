@@ -1152,6 +1152,69 @@ std::vector<Tensor> foreach_tensor_div_other_backward_slow(
     const variable_list self,
     const variable_list other,
     const variable_list grads);
+std::vector<Tensor> foreach_tensor_pointwise_self_backward_slow(
+    const variable_list grads,
+    const variable_list self);
+std::vector<Tensor> foreach_tensor_addcmul_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value);
+std::vector<Tensor> foreach_tensor_addcmul_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value);
+std::vector<Tensor> foreach_tensor_addcmul_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars);
+std::vector<Tensor> foreach_tensor_addcmul_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars);
+std::vector<Tensor> foreach_tensor_addcmul_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars);
+std::vector<Tensor> foreach_tensor_addcmul_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars);
+std::vector<Tensor> foreach_tensor_addcdiv_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value);
+std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value);
+std::vector<Tensor> foreach_tensor_addcdiv_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars);
+std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars);
+std::vector<Tensor> foreach_tensor_addcdiv_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars);
+std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars);
 } // namespace details
 } // namespace generated
 } // namespace autograd

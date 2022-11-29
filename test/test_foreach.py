@@ -327,6 +327,31 @@ class TestForeach(TestCase):
         self._pointwise_test(dtype, inplace_op, inplace_ref, inputs, is_fastpath,
                              is_inplace=True, values=values, custom_values_err=custom_values_err)
 
+        if (
+            is_fastpath and not disable_fastpath and dtype in floating_types() and
+            (values is None and not isinstance(values, torch.Tensor))
+        ):
+            inputs = [
+                [
+                    t.requires_grad_() for t in
+                    opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath, same_size=True)
+                ] for _ in range(3)
+            ]
+            ref_inputs = [[t.clone().detach().requires_grad_() for t in tensors] for tensors in inputs]
+            if values is None:
+                sum(op.func(*inputs)).mean().backward()
+                sum([ref.func(a, b, c) for a, b, c in zip(*ref_inputs)]).mean().backward()
+            else:
+                sum(op.func(*inputs, values)).mean().backward()
+                if isinstance(values, Number):
+                    sum([ref.func(a, b, c, value=values) for a, b, c in zip(*ref_inputs)]).mean().backward()
+                else:
+                    sum([ref.func(a, b, c, value=value) for a, b, c, value in zip(*ref_inputs, values)]).mean().backward()
+
+            for tensors, ref_tensors in zip(inputs, ref_inputs):
+                self.assertEqual([t.grad for t in tensors], [t.grad for t in ref_tensors])
+
+
         # Tests of implicit broadcasting
         inputs = [
             opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath, same_size=True),

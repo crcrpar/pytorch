@@ -7285,6 +7285,190 @@ std::vector<Tensor> foreach_tensor_div_other_backward_slow(
   }
   return grad_inputs;
 }
+
+std::vector<Tensor> foreach_tensor_pointwise_self_backward_slow(
+    const variable_list grads,
+    const variable_list self) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(self[i].scalar_type(), grads[i]));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcmul_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor1[i].scalar_type(), grads[i] * (tensor2[i] * value).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcmul_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor2[i].scalar_type(), grads[i] * (tensor1[i] * value).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcmul_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor1[i].scalar_type(), grads[i] * (tensor2[i] * scalars[i]).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcmul_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor2[i].scalar_type(), grads[i] * (tensor1[i] * scalars[i]).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcmul_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor1[i].scalar_type(), grads[i] * (tensor2[i] * scalars[i]).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcmul_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor2[i].scalar_type(), grads[i] * (tensor1[i] * scalars[i]).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcdiv_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor1[i].scalar_type(), grads[i] * (value / tensor2[i]).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Scalar value) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor2[i].scalar_type(),
+        -grads[i] * (value * tensor1[i] / (tensor2[i] * tensor2[i])).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcdiv_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor1[i].scalar_type(), grads[i] * (scalars[i] / tensor2[i]).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const std::vector<Scalar> scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor2[i].scalar_type(),
+        -grads[i] *
+            (scalars[i] * tensor1[i] / (tensor2[i] * tensor2[i])).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcdiv_tensor1_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor1[i].scalar_type(), grads[i] * (scalars[i] / tensor2[i]).conj()));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
+    const variable_list grads,
+    const variable_list tensor1,
+    const variable_list tensor2,
+    const Tensor scalars) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(handle_r_to_c(
+        tensor2[i].scalar_type(),
+        -grads[i] *
+            (scalars[i] * tensor1[i] / (tensor2[i] * tensor2[i])).conj()));
+  }
+  return grad_inputs;
+}
 } // namespace details
 } // namespace generated
 } // namespace autograd
