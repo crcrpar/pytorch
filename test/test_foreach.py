@@ -246,6 +246,17 @@ class TestForeach(TestCase):
         self._binary_test(dtype, op, ref, inputs, is_fastpath, is_inplace=False)
         self._binary_test(dtype, inplace_op, inplace_ref, inputs, is_fastpath, is_inplace=True)
 
+        if dtype not in floating_types() or any([isinstance(s, bool) for s in scalarlist]):
+            return
+        inputs = [t.requires_grad_() for t in opinfo.sample_inputs(device, dtype, N, noncontiguous=not is_fastpath, same_size=True)]
+        ref_inputs = [t.clone().detach().requires_grad_() for t in inputs]
+        outputs = op.func(inputs, scalarlist)
+        sum(outputs).mean().backward()
+        ref_outputs = [ref.func(lhs, scalar) for lhs, scalar in zip(ref_inputs, scalarlist)]
+        sum(ref_outputs).mean().backward()
+        self.assertEqual([t.grad for t in inputs[0]], [t.grad for t in ref_inputs[0]])
+        self.assertEqual([t.grad for t in inputs[1]], [t.grad for t in ref_inputs[1]])
+
     # note(mkozuki): Why two functions depending on with/without bool?
     # `foreach_sub` & `foreach_sub_` do `sub_check(tensors[i], scalars[i])` from i=1...N.
     # So, if scalarlist has one or more bool values, `foreach_sub` and `foreach_sub_`
