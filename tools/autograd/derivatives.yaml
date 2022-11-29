@@ -3027,3 +3027,33 @@
 
 - name: _foreach_div.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
   self: foreach_tensor_div_backward_slow(self, scalars, grads)
+
+- name: _foreach_addcmul.Scalar(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> Tensor[]
+  self: foreach_tensor_pointwise_self_backward_slow(grads, self)
+  tensor1: foreach_tensor_addcmul_tensor1_backward_slow(grads, tensor1, tensor2, value)
+  tensor2: foreach_tensor_addcmul_tensor2_backward_slow(grads, tensor1, tensor2, value)
+
+- name: _foreach_addcmul.ScalarList(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> Tensor[]
+  self: foreach_tensor_pointwise_self_backward_slow(grads, self)
+  tensor1: foreach_tensor_addcmul_tensor1_backward_slow(grads, tensor1, tensor2, scalars)
+  tensor2: foreach_tensor_addcmul_tensor2_backward_slow(grads, tensor1, tensor2, scalars)
+
+- name: _foreach_addcmul.Tensor(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> Tensor[]
+  self: foreach_tensor_pointwise_self_backward_slow(grads, self)
+  tensor1: foreach_tensor_addcmul_tensor1_backward_slow(grads, tensor1, tensor2, scalars)
+  tensor2: foreach_tensor_addcmul_tensor2_backward_slow(grads, tensor1, tensor2, scalars)
+
+- name: _foreach_addcdiv.Scalar(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar value=1) -> Tensor[]
+  self: foreach_tensor_pointwise_self_backward_slow(grads, self)
+  tensor1: foreach_tensor_addcdiv_tensor1_backward_slow(grads, tensor1, tensor2, value)
+  tensor2: foreach_tensor_addcdiv_tensor2_backward_slow(grads, tensor1, tensor2, value)
+
+- name: _foreach_addcdiv.ScalarList(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Scalar[] scalars) -> Tensor[]
+  self: foreach_tensor_pointwise_self_backward_slow(grads, self)
+  tensor1: foreach_tensor_addcdiv_tensor1_backward_slow(grads, tensor1, tensor2, scalars)
+  tensor2: foreach_tensor_addcdiv_tensor2_backward_slow(grads, tensor1, tensor2, scalars)
+
+- name: _foreach_addcdiv.Tensor(Tensor[] self, Tensor[] tensor1, Tensor[] tensor2, Tensor scalars) -> Tensor[]
+  self: foreach_tensor_pointwise_self_backward_slow(grads, self)
+  tensor1: foreach_tensor_addcdiv_tensor1_backward_slow(grads, tensor1, tensor2, scalars)
+  tensor2: foreach_tensor_addcdiv_tensor2_backward_slow(grads, tensor1, tensor2, scalars)
