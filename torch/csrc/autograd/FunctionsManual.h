@@ -9,6 +9,8 @@
 #include <cmath>
 #endif
 
+#include <vector>
+
 #include <ATen/ATen.h>
 #include <torch/csrc/autograd/generated/Functions.h>
 
@@ -1032,6 +1034,7 @@ Tensor take_backward(
     const Tensor& self,
     const Tensor& indices);
 
+// note(crcrpar): Might want to have multi_tensor_apply based path (would need to move these to `ATen/native`)
 std::vector<Tensor> foreach_tensor_sqrt_backward_slow(
     const variable_list& grads,
     const variable_list& result);
@@ -1142,7 +1145,7 @@ std::vector<Tensor> foreach_tensor_div_backward_slow(
     const variable_list grads);
 std::vector<Tensor> foreach_tensor_div_backward_slow(
     const variable_list self,
-    const std::vector<Scalar>& scalars,
+    const std::vector<Scalar> scalars,
     const variable_list grads);
 std::vector<Tensor> foreach_tensor_div_other_backward_slow(
     const variable_list self,

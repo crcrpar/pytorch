@@ -3015,8 +3015,8 @@
 - name: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   self: foreach_tensor_mul_backward_slow(self, scalar, grads)
 
-- name: _foreach_mul.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
-  self: foreach_tensor_mul_backward_slow(self, scalars, grads)
+# - name: _foreach_mul.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+#   self: foreach_tensor_mul_backward_slow(self, scalars, grads)
 
 - name: _foreach_div.List(Tensor[] self, Tensor[] other) -> Tensor[]
   self: foreach_tensor_div_backward_slow(self, other, grads)
@@ -3025,5 +3025,5 @@
 - name: _foreach_div.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
   self: foreach_tensor_div_backward_slow(self, scalar, grads)
 
-- name: _foreach_div.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
-  self: foreach_tensor_div_backward_slow(self, scalars, grads)
+# - name: _foreach_div.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+#   self: foreach_tensor_div_backward_slow(self, scalars, grads)
