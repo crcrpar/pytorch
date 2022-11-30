@@ -1215,6 +1215,19 @@ std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
     const variable_list tensor1,
     const variable_list tensor2,
     const Tensor scalars);
+std::vector<Tensor> foreach_tensor_maximum_self_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_maximum_other_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads);
+std::vector<Tensor> foreach_tensor_norm_backward_slow(
+    const variable_list self,
+    const Scalar ord,
+    const variable_list result,
+    const variable_list grads);
 } // namespace details
 } // namespace generated
 } // namespace autograd
