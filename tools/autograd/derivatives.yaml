@@ -3057,3 +3057,14 @@
   self: foreach_tensor_pointwise_self_backward_slow(grads, self)
   tensor1: foreach_tensor_addcdiv_tensor1_backward_slow(grads, tensor1, tensor2, scalars)
   tensor2: foreach_tensor_addcdiv_tensor2_backward_slow(grads, tensor1, tensor2, scalars)
+
+- name: _foreach_maximum.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  self: foreach_tensor_maximum_self_backward_slow(self, other, grads)
+  other: foreach_tensor_maximum_other_backward_slow(self, other, grads)
+
+- name: _foreach_minimum.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  self: foreach_tensor_maximum_other_backward_slow(self, other, grads)
+  other: foreach_tensor_maximum_self_backward_slow(self, other, grads)
+
+- name: _foreach_norm.Scalar(Tensor[] self, Scalar ord=2) -> Tensor[]
+  self: foreach_tensor_norm_backward_slow(self, ord, result, grads)

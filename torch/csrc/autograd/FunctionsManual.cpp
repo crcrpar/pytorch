@@ -7469,6 +7469,48 @@ std::vector<Tensor> foreach_tensor_addcdiv_tensor2_backward_slow(
   }
   return grad_inputs;
 }
+
+std::vector<Tensor> foreach_tensor_maximum_self_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(
+        at::where(self[i] == other[i], grads[i] / 2, grads[i])
+            .masked_fill_(self[i] < other[i], 0));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_maximum_other_backward_slow(
+    const variable_list self,
+    const variable_list other,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(grads.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(
+        at::where(self[i] == other[i], grads[i] / 2, grads[i])
+            .masked_fill_(self[i] > other[i], 0));
+  }
+  return grad_inputs;
+}
+
+std::vector<Tensor> foreach_tensor_norm_backward_slow(
+    const variable_list self,
+    const Scalar ord,
+    const variable_list result,
+    const variable_list grads) {
+  std::vector<Tensor> grad_inputs;
+  grad_inputs.reserve(self.size());
+  for (const auto& i : c10::irange(grads.size())) {
+    grad_inputs.emplace_back(linalg_vector_norm_backward(
+        grads[i], self[i], ord, result[i], {}, false));
+  }
+  return grad_inputs;
+}
 } // namespace details
 } // namespace generated
 } // namespace autograd

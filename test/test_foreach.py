@@ -488,6 +488,17 @@ class TestForeach(TestCase):
             inputs = tuple(op.sample_inputs(device, dtype, N) for _ in range(2))
             self._minmax_test(op, inputs, True, N if dtype == torch.bool else 1)
 
+            if dtype not in floating_types():
+                continue
+            inputs = [[t.requires_grad_() for t in op.sample_inputs(device, dtype, N, same_size=True)] for _ in range(2)]
+            ref_inputs = [[t.clone().detach().requires_grad_() for t in tensors] for tensors in inputs]
+            sum(op.method_variant(inputs[0], inputs[1])).mean().backward()
+            sum([op.ref(a, b) for a, b in zip(*ref_inputs)]).mean().backward()
+            self.assertEqual(
+                [[t.grad for t in tensors] for tensors in inputs],
+                [[t.grad for t in tensors] for tensors in ref_inputs],
+            )
+
     @ops(foreach_minmax_op_db,
          dtypes=all_types_and(torch.half, torch.bfloat16, torch.bool))
     def test_minmax_slowpath(self, device, dtype, op):
@@ -528,6 +539,14 @@ class TestForeach(TestCase):
                 n_expected_cudaLaunchKernels = N
             inputs = op.sample_inputs(device, dtype, N, noncontiguous=False),
             self._reduce_test(op, inputs, ord, True, n_expected_cudaLaunchKernels)
+
+            if dtype not in floating_types():
+                continue
+            inputs = [t.requires_grad_() for t in op.sample_inputs(device, dtype, N, noncontiguous=False)]
+            ref_inputs = [t.clone().detach().requires_grad_() for t in inputs]
+            (sum(op.op(inputs)) / N).backward()
+            (sum([op.ref(t) for t in ref_inputs]) / N).backward()
+            self.assertEqual([t.grad for t in inputs], [t.grad for t in ref_inputs])
 
     @ops(foreach_reduce_op_db)
     def test_reduce_slowpath(self, device, dtype, op):
