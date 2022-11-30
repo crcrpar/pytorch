@@ -29,7 +29,6 @@ from torchgen.api.types import (
     optionalIntArrayRefT,
     optionalSymIntArrayRefT,
     scalarT,
-    # scalarListT,
     stringT,
     symIntArrayRefT,
     SymIntT,
