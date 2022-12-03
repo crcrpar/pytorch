@@ -102,6 +102,10 @@ std::string getNcclErrorDetailStr(
           "ncclRemoteError: A call failed possibly due to a network error or a remote process exiting prematurely.";
       break;
 #endif
+#ifdef ENABLE_NCCL_FAULT_TOLERANCE
+    case ncclInProgress:
+      interpret = "ncclInProgress: A call is in progress.";
+#endif
     default:
       interpret = "Unknown NCCL error!";
   }

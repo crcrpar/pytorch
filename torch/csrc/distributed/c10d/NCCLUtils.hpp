@@ -153,8 +153,16 @@ class NCCLComm {
       int rank,
       ncclUniqueId commId) {
     auto comm = std::make_shared<NCCLComm>();
+#if defined(ENABLE_NCCL_FAULT_TOLERANCE)
+    // TODO(crcrpar): Accept & reflect `blocking`.
+    // Currently this call is no different from the one below.
+    ncclConfig_t config = NCCL_CONFIG_INITIALIZER;
+    C10D_NCCL_CHECK(
+        ncclCommInitRankConfig(&(comm->ncclComm_), numRanks, commId, rank, &config), c10::nullopt);
+#else
     C10D_NCCL_CHECK(
         ncclCommInitRank(&(comm->ncclComm_), numRanks, commId, rank), c10::nullopt);
+#endif
     comm->ncclId_ = commId;
     comm->rank_ = rank;
     return comm;

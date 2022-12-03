@@ -42,6 +42,9 @@ constexpr const char* NCCL_ASYNC_ERROR_HANDLING = "NCCL_ASYNC_ERROR_HANDLING";
 // This variable must be set together with NCCL_ASYNC_ERROR_HANDLING.
 constexpr const char* NCCL_DESYNC_DEBUG = "NCCL_DESYNC_DEBUG";
 
+// Environment variable to enable NCCL>=2.14 feature of fault tolerance.
+constexpr const char* NCCL_FAULT_TOLERANCE = "TORCH_NCCL_FAULT_TOLERANCE";
+
 constexpr const char* NCCL_BACKEND_NAME = "nccl";
 
 // TearDown mode: tear down process upon error, see `WorkNCCL::handleNCCLGuard`
@@ -667,6 +670,9 @@ class TORCH_API ProcessGroupNCCL : public ProcessGroup {
 
   // Whether or not to enable timeout root cause analysis.
   bool desyncDebug_;
+
+  // Whether or not to enable fault tolerance.
+  bool enableNcclFaultTolerance_ = false;
 
   // Set of communicators that this process group has aborted and their
   // ncclUniqueId has been written to the store. We don't need a lock

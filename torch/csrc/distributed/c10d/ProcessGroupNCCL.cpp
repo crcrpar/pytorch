@@ -657,6 +657,10 @@ ProcessGroupNCCL::ProcessGroupNCCL(
       std::thread(&ProcessGroupNCCL::ncclCommWatchdog, this);
 #endif
 
+#if defined(ENABLE_NCCL_FAULT_TOLERANCE)
+  enableNcclFaultTolerance_ = parseEnvVarFlag(NCCL_FAULT_TOLERANCE);
+#endif
+
   if (asyncErrorHandling_ != NoHandling) {
     workCleanupThread_ = std::thread(&ProcessGroupNCCL::workCleanupLoop, this);
   }
