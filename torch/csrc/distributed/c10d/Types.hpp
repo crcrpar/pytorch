@@ -76,18 +76,40 @@ struct TORCH_API ReduceOp : torch::CustomClassHolder {
 
   operator RedOpType() const { return op_; }
 
-  bool operator==(const std::uint8_t other) {
-    TORCH_INTERNAL_ASSERT(other < 9, "Invalid other op value");
-    return other == op_;
+  // bool operator==(const std::uint8_t other) {
+  //   TORCH_INTERNAL_ASSERT(other < 9, "Invalid other op value");
+  //   return other == op_;
+  // }
+
+  bool operator==(const ReduceOp::RedOpType other) const {
+    return *this == ReduceOp(other);
   }
 
-  bool operator==(const ReduceOp::RedOpType other) {
-    return *this == static_cast<std::uint8_t>(other);
-  }
-
-  // todo(crcrpar): Handle `RedOpType::PREMUL_SUM` with its scaling factor.
-  bool operator==(const ReduceOp& other) {
-    return *this == other.op_;
+  bool operator==(const ReduceOp& other) const {
+    if (op_ == RedOpType::PREMUL_SUM) {
+      if (other.op_ != RedOpType::PREMUL_SUM) {
+        return false;
+      }
+      const auto* self_factor_supplement = reinterpret_cast<NCCLPreMulSumSupplement*>(supplement_.get());
+      const auto self_tensor_factor = self_factor_supplement->tensor_factor;
+      const auto* other_factor_supplement = reinterpret_cast<NCCLPreMulSumSupplement*>(other.supplement_.get());
+      const auto & other_tensor_factor = other_factor_supplement->tensor_factor;
+      if (self_tensor_factor.numel() == 1) {
+        if (other_tensor_factor.numel() != 1) {
+          return false;
+        }
+        return (self_tensor_factor.device() == other_tensor_factor.device() && self_tensor_factor.dtype() == other_tensor_factor.dtype()) &&
+          (self_tensor_factor == other_tensor_factor).all().item<bool>();
+      } else {
+        if (other_tensor_factor.numel() == 1) {
+          return false;
+        }
+        return self_factor_supplement->double_factor == other_factor_supplement->double_factor;
+      }
+      return false;
+    } else {
+      return op_ == other.op_;
+    }
   }
 
   RedOpType op_ = SUM;

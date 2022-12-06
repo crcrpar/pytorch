@@ -1718,6 +1718,22 @@ class ReduceOpTest(TestCase):
             self.assertFalse(None in (reduce_op, reduce_op_obj))
             self.assertFalse(not_reduceop in (reduce_op, reduce_op_obj))
 
+    def test_premul_sum_reduceop(self):
+        cpu_tensor_factor, double_factor = torch.tensor(1.0), 2.0
+
+        cpu_tensor_reduce_op = dist._make_nccl_premul_sum(cpu_tensor_factor)
+        double_factor_reduce_op = dist._make_nccl_premul_sum(double_factor)
+
+        self.assertEqual(copy.copy(cpu_tensor_reduce_op), cpu_tensor_reduce_op)
+        self.assertNotEqual(cpu_tensor_factor, double_factor_reduce_op)
+        self.assertEqual(copy.copy(double_factor_reduce_op), double_factor_reduce_op)
+
+        if not torch.cuda.is_available():
+            return
+        cuda_tensor_factor = torch.tensor(1.0, device="cuda")
+        cuda_tensor_reduce_op = dist._make_nccl_premul_sum(cuda_tensor_factor)
+        self.assertNotEqual(cpu_tensor_reduce_op, cuda_tensor_reduce_op)
+
 
 if __name__ == "__main__":
     assert (
