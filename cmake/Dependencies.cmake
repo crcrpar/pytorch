@@ -48,7 +48,7 @@ if(USE_CUDA)
     set(Caffe2_PUBLIC_CUDA_DEPENDENCY_LIBS
       caffe2::cufft caffe2::curand caffe2::cublas)
     if(CAFFE2_USE_NVRTC)
-      list(APPEND Caffe2_PUBLIC_CUDA_DEPENDENCY_LIBS caffe2::cuda caffe2::nvrtc)
+      list(APPEND Caffe2_PUBLIC_CUDA_DEPENDENCY_LIBS caffe2::cuda)
     else()
       caffe2_update_option(USE_NVRTC OFF)
     endif()

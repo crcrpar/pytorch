@@ -352,10 +352,7 @@ cc_library(
         ":aten_src_ATen_config",
     ] + generated_cpu_cpp + aten_ufunc_generated_cpu_sources("aten/src/ATen/{}"),
     copts = ATEN_COPTS,
-    data = if_cuda(
-        [":libcaffe2_nvrtc.so"],
-        [],
-    ),
+    data = [],
     visibility = ["//visibility:public"],
     deps = [
         ":ATen_CPU",
@@ -366,33 +363,6 @@ cc_library(
         "@ideep",
     ],
     alwayslink = True,
-)
-
-cc_library(
-    name = "aten_nvrtc",
-    srcs = glob([
-        "aten/src/ATen/cuda/nvrtc_stub/*.cpp",
-    ]),
-    copts = ATEN_COPTS,
-    linkstatic = True,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":aten_headers",
-        "@cuda",
-        "@cuda//:cuda_driver",
-        "@cuda//:nvrtc",
-        "//c10:headers",
-    ],
-    alwayslink = True,
-)
-
-cc_binary(
-    name = "libcaffe2_nvrtc.so",
-    linkshared = True,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":aten_nvrtc",
-    ],
 )
 
 cc_library(
