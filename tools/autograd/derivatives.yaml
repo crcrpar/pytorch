@@ -2954,42 +2954,42 @@
   self: grad.reshape_symint(self.sym_sizes())
   result: auto_linear
 
-- name: _foreach_add.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
-  self: foreach_tensor_add_backward_slow(self, grads, 1)
-  other: foreach_tensor_add_backward_slow(other, grads, alpha)
+# - name: _foreach_add.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+#   self: handle_r_to_c(self[i].scalar_type(), grads[i])
+#   other: handle_r_to_c(other[i].scalar_type(), maybe_multiply(grads[i], alpha.conj()))
 
 - name: _foreach_add.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
-  self: foreach_tensor_add_backward_slow(self, grads, 1)
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
 
 - name: _foreach_add.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
-  self: foreach_tensor_add_backward_slow(self, grads, 1)
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
 
 - name: _foreach_sub.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
-  self: foreach_tensor_sub_backward_slow(self, grads, 1, false)
-  other: foreach_tensor_sub_backward_slow(other, grads, alpha, true)
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
+  other: handle_r_to_c(other[i].scalar_type(), maybe_multiply(-grads[i], alpha.conj()))
 
 - name: _foreach_sub.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
-  self: foreach_tensor_sub_backward_slow(self, grads, 1, false)
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
 
 - name: _foreach_sub.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
-  self: foreach_tensor_sub_backward_slow(self, grads, 1, false)
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
 
 - name: _foreach_mul.List(Tensor[] self, Tensor[] other) -> Tensor[]
-  self: foreach_tensor_mul_backward_slow(self, other, grads)
-  other: foreach_tensor_mul_backward_slow(other, self, grads)
+  self: mul_tensor_backward(grads[i], other[i], self[i].scalar_type())
+  other: mul_tensor_backward(grads[i], self[i], other[i].scalar_type())
 
 - name: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
-  self: foreach_tensor_mul_backward_slow(self, scalar, grads)
+  self: mul_tensor_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalar)), self[i].scalar_type())
 
 - name: _foreach_mul.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
-  self: foreach_tensor_mul_backward_slow(self, scalars, grads)
+  self: mul_tensor_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalars[i])), self[i].scalar_type())
 
 - name: _foreach_div.List(Tensor[] self, Tensor[] other) -> Tensor[]
-  self: foreach_tensor_div_backward_slow(self, other, grads)
-  other: foreach_tensor_div_other_backward_slow(self, other, grads)
+  self: div_tensor_self_backward(grads[i], other[i], self[i].scalar_type())
+  other: div_tensor_other_backward(grads[i], self[i], other[i])
 
 - name: _foreach_div.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
-  self: foreach_tensor_div_backward_slow(self, scalar, grads)
+  self: div_tensor_self_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalar)), self[i].scalar_type())
 
 - name: _foreach_div.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
-  self: foreach_tensor_div_backward_slow(self, scalars, grads)
+  self: div_tensor_self_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalars[i])), self[i].scalar_type())
