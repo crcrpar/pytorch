@@ -7,9 +7,11 @@ from torchgen.api import cpp
 from torchgen.api.types import BaseCType, Binding, NamedCType, tensorListT
 from torchgen.model import (
     FunctionSchema,
+    ListType,
     NativeFunction,
     NativeFunctionsViewGroup,
     SchemaKind,
+    SelfArgument,
     Type,
 )
 from torchgen.utils import IDENT_REGEX
@@ -360,10 +362,7 @@ Attempted to convert a derivative formula for a mutable operator
 
         # (4) Generate derivative information of unary foreach functions if none is defined in `derivatives.yaml`
         base_op_name = f.func.name.name
-        if (
-            base_op_name.base.startswith("_foreach")
-            and not base_op_name.inplace
-        ):
+        if base_op_name.base.startswith("_foreach") and not base_op_name.inplace:
             ref_native_op_name = base_op_name.base.split("_foreach_")[-1]
             if len(f.func.arguments.post_self_positional) == 0:
                 for function_schema in functional_info_by_signature:
@@ -445,21 +444,108 @@ Attempted to convert a derivative formula for a mutable operator
                             differentiability_infos[f.func] = diff_info_dict
                             functional_info_by_signature[f.func] = diff_info_dict
                         return diff_info_dict, True
-            elif len(f.func.arguments.post_self_positional) == 1:
+            else:
                 ref_overload = {
-                    "List": "Tensor", "Scalar": "Scalar", "ScalarList": "Scalar",
-                }[f.func.name.overload_name]
-                print(f"# {f.func.name = }, {f.func.arguments = }")
+                    "List": "Tensor",
+                    "Scalar": "Scalar",
+                    "ScalarList": "Scalar",
+                }.get(f.func.name.overload_name)
+                # Pattern match the overload name and/or types of arguments.
+                modified_derivative_formulas = []
                 for function_schema in differentiability_infos:
                     if (
                         function_schema.name.name.base == ref_native_op_name
                         and not function_schema.name.name.inplace
-                        # and function_schema.name.overload_name == ref_overload
                     ):
+                        foreach_args = [
+                            arg
+                            for arg in f.func.arguments.non_out
+                            if not isinstance(arg, SelfArgument)
+                        ]
+                        ref_args = [
+                            arg
+                            for arg in function_schema.arguments.non_out
+                            if not isinstance(arg, SelfArgument)
+                        ]
+                        assert len(foreach_args) <= len(ref_args), (
+                            f.func.arguments.non_out,
+                            function_schema.arguments.non_out,
+                        )
+                        arguments_compat = all(
+                            [
+                                r.type in (fe.type, getattr(fe.type, "elem", None))
+                                for fe, r in zip(foreach_args, ref_args)
+                            ]
+                        )
+                        if not arguments_compat:
+                            continue
+                        foreach2ref_argsmap = {
+                            fe.name: r.name for fe, r in zip(foreach_args, ref_args)
+                        }
+                        ref_diff_info = differentiability_infos[function_schema][
+                            "Default"
+                        ]
+                        for derivative in ref_diff_info.derivatives:
+                            modified_formula = (
+                                derivative.original_formula.replace("grad", "grads[i]")
+                                .replace("self", "self[i]")
+                                .replace("result", "result[i]")
+                            )
+                            for fe_arg in foreach_args:
+                                fe_arg_name = fe_arg.name
+                                ref_arg_name = foreach2ref_argsmap[fe_arg_name]
+                                if isinstance(fe_arg.type, ListType):
+                                    fe_arg_name = f"{fe_arg_name}[i]"
+                                modified_formula = modified_formula.replace(
+                                    ref_arg_name, fe_arg_name
+                                )
+                            modified_derivative_formulas.append(modified_formula)
+                            saved_inputs, saved_outputs = [], []
+                            for arg, ref_arg in zip(
+                                f.func.arguments.non_out,
+                                function_schema.arguments.non_out,
+                            ):
+                                _a = (
+                                    arg.argument
+                                    if isinstance(arg, SelfArgument)
+                                    else arg
+                                )
+                                _ra = (
+                                    ref_arg.argument
+                                    if isinstance(ref_arg, SelfArgument)
+                                    else ref_arg
+                                )
+                                assert _ra.type in (
+                                    _a.type,
+                                    getattr(_a.type, "elem", None),
+                                )
+                                if _ra.type not in (
+                                    s.nctype.type.cpp_type()
+                                    for s in derivative.saved_inputs
+                                ):
+                                    continue
+                                if arg.name not in modified_formula:
+                                    continue
+                                saved_inputs.append(
+                                    SavedAttribute(
+                                        nctype=NamedCType(
+                                            name=arg.name,
+                                            type=BaseCType(
+                                                arg.argument.type
+                                                if isinstance(arg, SelfArgument)
+                                                else arg.type
+                                            ),
+                                        )
+                                    )
+                                )
                         all_saved_inputs, all_saved_outputs = [], []
-                        ref_diff_info_dict = copy.deepcopy(differentiability_infos[function_schema])
+                        ref_diff_info_dict = copy.deepcopy(
+                            differentiability_infos[function_schema]
+                        )
                         if ref_overload == function_schema.name.overload_name:
-                            print(f"\t{function_schema.name = }, {function_schema.arguments = }\n\t{ref_diff_info_dict}")
+                            print(
+                                f"\t{[d.original_formula for d in ref_diff_info.derivatives] = }, {modified_derivative_formulas = }\n\t{ref_diff_info_dict}"
+                            )
 
         return None, False
 
