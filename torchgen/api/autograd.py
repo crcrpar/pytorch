@@ -325,32 +325,37 @@ def match_differentiability_info(
         if schema.kind() != SchemaKind.functional
     }
 
-    def is_compat_ref_schema(
+    def is_foreach_compat_ref_schema(
         f: NativeFunction,
         ref_schema: "FunctionSchema",
     ) -> bool:
         expected_ref_op_name = f.func.name.name.base.split("_foreach_")[-1]
-        if (
+        if not (
             ref_schema.name.name.base == expected_ref_op_name
             and not ref_schema.name.name.inplace
         ):
-            for arg, ref_arg in zip(
-                f.func.arguments.non_out, ref_schema.arguments.non_out
-            ):
-                arg_type, ref_arg_type = None, None
-                if isinstance(arg, SelfArgument):
-                    assert isinstance(ref_arg, SelfArgument)
-                    arg_type = arg.argument.type
-                    ref_arg_type = ref_arg.argument.type
-                else:
-                    arg_type = arg.type
-                    ref_arg_type = ref_arg.type
-                # `ListType` is used ubiquitously in foreach functions
-                if ref_arg_type not in (arg_type, getattr(arg_type, "elem", None)):
-                    return False
+            return False
+        # (1) unary
+        if len(f.func.arguments.non_out) == 1:
+            if len(ref_schema.arguments.non_out) != 1:
+                return False
+            return True
+        for arg, ref_arg in zip(
+            f.func.arguments.non_out, ref_schema.arguments.non_out
+        ):
+            arg_type, ref_arg_type = None, None
+            if isinstance(arg, SelfArgument):
+                assert isinstance(ref_arg, SelfArgument)
+                arg_type = arg.argument.type
+                ref_arg_type = ref_arg.argument.type
             else:
-                return True
-        return False
+                arg_type = arg.type
+                ref_arg_type = ref_arg.type
+            # `ListType` is used ubiquitously in foreach functions
+            if ref_arg_type not in (arg_type, getattr(arg_type, "elem", None)):
+                return False
+        else:
+            return True
 
     def translate_derivative_in_foreach(
         foreach_func: NativeFunction,
@@ -447,8 +452,7 @@ Attempted to convert a derivative formula for a mutable operator
  this is not currently supported (we'd need to fix up the formula in the codegen)."""
             return info_dict, False
 
-        # (4) Generate derivative information of unary foreach functions if none is defined in
-        # `derivatives.yaml`
+        # (4) Generate derivative information of foreach functions if none defined in `derivatives.yaml`
         #
         # This logic has some assumptions:
         #   - Each foreach has a reference aten native function and its `Derivative`.
@@ -460,7 +464,7 @@ Attempted to convert a derivative formula for a mutable operator
         base_op_name = f.func.name.name
         if base_op_name.base.startswith("_foreach") and not base_op_name.inplace:
             for function_schema in functional_info_by_signature:
-                if not is_compat_ref_schema(f, function_schema):
+                if not is_foreach_compat_ref_schema(f, function_schema):
                     continue
                 if function_schema in differentiability_infos:
                     ref_default_diff_info = differentiability_infos[function_schema][
@@ -540,6 +544,7 @@ Attempted to convert a derivative formula for a mutable operator
                 }
                 differentiability_infos[f.func] = diff_info_dict
                 functional_info_by_signature[f.func] = diff_info_dict
+                print(f"{diff_info_dict['Default'] = }")
                 return diff_info_dict, True
 
         return None, False
