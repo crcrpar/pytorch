@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Match, Optional, Sequence, Set, Tuple, cast
+from typing import cast, Dict, List, Match, Optional, Sequence, Set, Tuple
 
 from torchgen.api import cpp
 from torchgen.api.types import BaseCType, Binding, NamedCType
@@ -360,7 +360,9 @@ def match_differentiability_info(
         ref_formula = ref_derivative.original_formula
         modified_formula = ref_formula.replace("grad", "grads[i]")
         modified_formula = modified_formula.replace("result", "result[i]")
-        if isinstance(cast(SelfArgument, f.func.arguments.self_arg).argument.type, ListType):
+        if isinstance(
+            cast(SelfArgument, f.func.arguments.self_arg).argument.type, ListType
+        ):
             modified_formula = modified_formula.replace("self", "self[i]")
         ref_saved_input_names = set(
             sa.nctype.name for sa in ref_derivative.saved_inputs
@@ -374,7 +376,8 @@ def match_differentiability_info(
             assert ref_arg.type == (
                 arg.type if not hasattr(arg.type, "elem") else arg.type.elem
             ), (
-                ref_arg.type, (arg.type, (None if not hasattr(arg, "elem") else arg.elem.type))
+                ref_arg.type,
+                (arg.type, (None if not hasattr(arg, "elem") else arg.elem.type)),
             )
             assert isinstance(ref_arg, (Argument, SelfArgument))
             if ref_arg.name in ref_derivative.var_names:
@@ -463,8 +466,13 @@ Attempted to convert a derivative formula for a mutable operator
                     ref_default_diff_info = differentiability_infos[function_schema][
                         "Default"
                     ]
-                elif function_schema.signature(strip_default=True) in functional_info_by_signature:
-                    ref_default_diff_info = functional_info_by_signature[function_schema.signature(strip_default=True)]["Default"]
+                elif (
+                    function_schema.signature(strip_default=True)
+                    in functional_info_by_signature
+                ):
+                    ref_default_diff_info = functional_info_by_signature[
+                        function_schema.signature(strip_default=True)
+                    ]["Default"]
                 else:
                     continue
                 translated_derivatives = (
@@ -510,10 +518,17 @@ Attempted to convert a derivative formula for a mutable operator
                             default=None,
                         )
                         for arg in f.func.arguments.non_out
-                        if (arg.argument.name if isinstance(arg, SelfArgument) else arg.name) in saved_arg_names
+                        if (
+                            arg.argument.name
+                            if isinstance(arg, SelfArgument)
+                            else arg.name
+                        )
+                        in saved_arg_names
                     ],
                     non_differentiable_arg_names=(
-                        (arg if not isinstance(arg, SelfArgument) else arg.argument).name
+                        (
+                            arg if not isinstance(arg, SelfArgument) else arg.argument
+                        ).name
                         for arg in f.func.arguments.non_out
                         if arg not in saved_arg_names
                     ),
