@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 namespace at { namespace native {
+
 grouped_nested_tensorlists_t group_tensorlists(ArrayRef<TensorList> nested_tensorlists, const bool has_step_list) {
   TORCH_CHECK_GT(nested_tensorlists.size(), 0);
   TORCH_CHECK(std::all_of(

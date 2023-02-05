@@ -1,13 +1,11 @@
 #pragma once
 #include <ATen/core/Tensor.h>
+#include <vector>
 
 namespace at { namespace native {
 
 void _fused_adam_cuda_impl_(
-    at::TensorList params,
-    at::TensorList grads,
-    at::TensorList exp_avgs,
-    at::TensorList exp_avg_sqs,
+    std::vector<std::vector<at::Tensor>>& nested_tensorlists,
     at::TensorList state_steps,
     const double lr,
     const double beta1,

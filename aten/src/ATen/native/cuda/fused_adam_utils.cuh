@@ -3,6 +3,7 @@
 #include <ATen/native/cuda/MultiTensorApply.cuh>
 #include <ATen/native/cuda/ForeachFunctors.cuh>
 #include <ATen/native/cuda/Pow.cuh>
+#include <c10/util/Optional.h>
 #include <unordered_map>
 
 
@@ -169,9 +170,27 @@ struct FusedAdamMathFunctor {
 };
 } // namespace
 
+using device_tensor_map_t = std::unordered_map<at::Device, at::Tensor>;
+device_tensor_map_t inline init_device_tensor_map(const c10::optional<at::Tensor>& tensor) {
+  if (tensor.has_value()) {
+    return device_tensor_map_t{{tensor->device(), tensor.value()}};
+  }
+  return device_tensor_map_t{};
+}
+
+c10::optional<at::Tensor> inline get_optional_tensor(
+    device_tensor_map_t& device_tensor_map, const c10::optional<at::Tensor>& tensor, const at::Device& device) {
+  if (!tensor.has_value()) {
+    return c10::optional<at::Tensor>();
+  }
+  if (!device_tensor_map.count(device)) {
+    device_tensor_map[device] = tensor->to(device);
+  }
+  return c10::optional<at::Tensor>(device_tensor_map[device]);
+}
+
 using dtype_nested_tensorlists_t = std::unordered_map<at::ScalarType, std::vector<std::vector<Tensor>>>;
 using grouped_nested_tensorlists_t = std::unordered_map<at::Device, dtype_nested_tensorlists_t>;
-
 grouped_nested_tensorlists_t group_tensorlists(ArrayRef<TensorList> nested_tensorlists, const bool has_step_list);
 
 }} // namespace at::native
