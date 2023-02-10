@@ -14587,3 +14587,9 @@
   dispatch:
     CUDA: _fused_adamw_kernel_cuda_
   autogen: _fused_adamw, _fused_adamw.out
+
+- func: _fused_sgd_(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] momentum_buffer_list, *, float lr, float weight_decay, float momentum, float dampening, bool nesterov, bool maximize, bool is_first_step, Tensor? grad_scale=None, Tensor? found_inf=None) -> ()
+  variants: function
+  dispatch:
+    CUDA: _fused_sgd_kernel_cuda_
+  autogen: _fused_sgd, _fused_sgd.out
