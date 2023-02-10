@@ -870,8 +870,9 @@ class TestOptim(TestCase):
         ]
         self._test_derived_optimizers_varying_tensors(optimizer_pairs_with_flags, "foreach")
 
-    def test_fused_optimizers(self):
-        optimizer_pairs_with_flags = tuple(itertools.product(
+    @property
+    def _fused_optimizer_pairs(self):
+        return list(itertools.product(
             (optim.Adam, optim.AdamW),
             (
                 dict(weight_decay=1., amsgrad=False),
@@ -879,21 +880,23 @@ class TestOptim(TestCase):
                 dict(weight_decay=0., amsgrad=False),
                 dict(weight_decay=0., amsgrad=True),
             ),
-        ))
-        self._test_derived_optimizers(optimizer_pairs_with_flags, "fused")
+        )) + [
+            (
+                optim.SGD,
+                dict(lr=0.2, momentum=1, dampening=0, weight_decay=1, nesterov=True),
+            ),
+            (
+                optim.SGD,
+                dict(lr=0.2, momentum=1, dampening=0.5, weight_decay=1, nesterov=False),
+            ),
+        ]
+
+    def test_fused_optimizers(self):
+        self._test_derived_optimizers(self._fused_optimizer_pairs, "fused")
 
     @unittest.skipIf(not TEST_MULTIGPU, "only one GPU detected")
     def test_fused_optimizers_with_varying_tensors(self):
-        optimizer_pairs_with_flags = tuple(itertools.product(
-            (optim.Adam, optim.AdamW),
-            (
-                dict(weight_decay=1., amsgrad=False),
-                dict(weight_decay=1., amsgrad=True),
-                dict(weight_decay=0., amsgrad=False),
-                dict(weight_decay=0., amsgrad=True),
-            ),
-        ))
-        self._test_derived_optimizers_varying_tensors(optimizer_pairs_with_flags, "fused")
+        self._test_derived_optimizers_varying_tensors(self._fused_optimizer_pairs, "fused")
 
     def test_adam(self):
         self._test_basic_cases(

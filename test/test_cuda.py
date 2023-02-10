@@ -2455,6 +2455,13 @@ torch.cuda.synchronize()
             (torch.optim.Adam, torch.optim.AdamW),
             ({"fused": True, "amsgrad": False}, {"fused": True, "amsgrad": True}),
             (False, True),
+        ) + product(
+            (torch.optim.SGD,),
+            (
+                {"lr": 0.2, "momentum": 1, "dampening": 0, "weight_decay": 1, "nesterov": True,},
+                {"lr": 0.2, "momentum": 1, "dampening": 0.5, "weight_decay": 1, "nesterov": False,},
+            ),
+            (False, True),
         ):
             with self.subTest(optim=optimizer_ctor, kwargs=optimizer_kwargs, separate_unscale=separate_unscale):
                 self._grad_scaling_autocast_fused_optimizers(
@@ -4349,6 +4356,9 @@ exit(2)
         cases = [
             (optimizer_ctor, {"lr": 0.1, "betas": (0.8, 0.7), "fused": True, "amsgrad": amsgrad})
             for optimizer_ctor, amsgrad in product((torch.optim.Adam, torch.optim.AdamW), (False, True))
+        ] + [
+            (torch.SGD, {"lr": 0.2, "momentum": 1, "dampening": dampening, "weight_decay": 1, "nesterov": nesterov})
+            for (dampening, nesterov) in ((0, True), (0.5, False))
         ]
 
         steps_warmup = 3
