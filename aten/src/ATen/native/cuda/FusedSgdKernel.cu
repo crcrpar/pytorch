@@ -31,8 +31,7 @@ C10_DEVICE __forceinline__ void sgd_math(
     const bool nesterov,
     const bool maximize,
     const bool is_first_step,
-    const float* grad_scale_ptr,
-    const float* found_inf_ptr
+    const float* grad_scale_ptr
 ) {
   using opmath_t = at::opmath_type<scalar_type>;
 #pragma unroll
@@ -47,6 +46,9 @@ C10_DEVICE __forceinline__ void sgd_math(
     if (maximize) {
       grad = -grad;
     }
+    if (weight_decay != 0) {
+      grad += param * weight_decay;
+    }
     if (is_first_step) {
       momentum_buffer = grad;
     } else {
@@ -57,10 +59,12 @@ C10_DEVICE __forceinline__ void sgd_math(
     } else {
       grad = momentum_buffer;
     }
-    param += -lr * grad;
+    param -= lr * grad;
 
     r_args[kParamIdx][ii] = param;
-    r_args[kGradIdx][ii] = grad_to_store;
+    if (grad_scale_ptr) {
+      r_args[kGradIdx][ii] = grad_to_store;
+    }
     r_args[kMomIdx][ii] = momentum_buffer;
   }
 }
@@ -98,7 +102,7 @@ struct FusedSGDMathFunctor {
         for (int i = 0; i < kDepth; i++) {
           load_store(r_args[i], args[i], 0, i_start);
         }
-        sgd_math(r_args, lr, weight_decay, momentum, dampening, nesterov, maximize, is_first_step, grad_scale_ptr, found_inf_ptr);
+        sgd_math(r_args, lr, weight_decay, momentum, dampening, nesterov, maximize, is_first_step, grad_scale_ptr);
 #pragma unroll
         for (int i = 0; i < kDepth; i++) {
           if (i != kGradIdx || grad_scale_ptr) {
@@ -109,7 +113,7 @@ struct FusedSGDMathFunctor {
     } else {
       for (int i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * kILP) {
         load_args<kDepth>(r_args, args, i_start, chunk_size, n);
-        sgd_math(r_args, lr, weight_decay, momentum, dampening, nesterov, maximize, is_first_step, grad_scale_ptr, found_inf_ptr);
+        sgd_math(r_args, lr, weight_decay, momentum, dampening, nesterov, maximize, is_first_step, grad_scale_ptr);
 #pragma unroll
         for (int i = 0; i < kDepth; i++) {
           if (i != kGradIdx || grad_scale_ptr) {

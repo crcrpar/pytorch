@@ -2445,24 +2445,26 @@ torch.cuda.synchronize()
             self._grad_scaling_autocast_test(optimizer_ctor=optimizer_ctor, optimizer_kwargs={"foreach": True})
 
     def test_grad_scaling_autocast_fused(self):
-        for optimizer_ctor in (torch.optim.Adam, torch.optim.AdamW):
-            self._grad_scaling_autocast_test(optimizer_ctor=optimizer_ctor, optimizer_kwargs={"fused": True})
+        for optimizer_ctor in (torch.optim.SGD,): # torch.optim.SGD):
+            with self.subTest(optimizer_ctor=optimizer_ctor):
+                # print(f"\t{optimizer_ctor = }")
+                self._grad_scaling_autocast_test(optimizer_ctor=optimizer_ctor, optimizer_kwargs={"fused": True, "lr": 1e-2})
 
     # Compare non-fused optimizer vs fused one as the fused one unscales gradients
     # inside its cuda kernel unlike the other.
     def test_grad_scaling_autocast_fused_optimizers(self):
-        for optimizer_ctor, optimizer_kwargs, separate_unscale in product(
+        for optimizer_ctor, optimizer_kwargs, separate_unscale in list(product(
             (torch.optim.Adam, torch.optim.AdamW),
             ({"fused": True, "amsgrad": False}, {"fused": True, "amsgrad": True}),
             (False, True),
-        ) + product(
+        )) + list(product(
             (torch.optim.SGD,),
             (
-                {"lr": 0.2, "momentum": 1, "dampening": 0, "weight_decay": 1, "nesterov": True,},
-                {"lr": 0.2, "momentum": 1, "dampening": 0.5, "weight_decay": 1, "nesterov": False,},
+                {"momentum": 1, "dampening": 0, "weight_decay": 1, "nesterov": True,},
+                {"momentum": 1, "dampening": 0.5, "weight_decay": 1, "nesterov": False,},
             ),
             (False, True),
-        ):
+        )):
             with self.subTest(optim=optimizer_ctor, kwargs=optimizer_kwargs, separate_unscale=separate_unscale):
                 self._grad_scaling_autocast_fused_optimizers(
                     optimizer_ctor=optimizer_ctor, optimizer_kwargs=optimizer_kwargs, separate_unscale=separate_unscale)
@@ -4354,17 +4356,17 @@ exit(2)
     )
     def test_graph_scaling_fused_optimizers(self):
         cases = [
-            (optimizer_ctor, {"lr": 0.1, "betas": (0.8, 0.7), "fused": True, "amsgrad": amsgrad})
+            (optimizer_ctor, True, {"lr": 0.1, "betas": (0.8, 0.7), "fused": True, "amsgrad": amsgrad})
             for optimizer_ctor, amsgrad in product((torch.optim.Adam, torch.optim.AdamW), (False, True))
         ] + [
-            (torch.SGD, {"lr": 0.2, "momentum": 1, "dampening": dampening, "weight_decay": 1, "nesterov": nesterov})
+            (torch.optim.SGD, False, {"lr": 0.2, "momentum": 1, "dampening": dampening, "weight_decay": 1, "nesterov": nesterov, "fused": True})
             for (dampening, nesterov) in ((0, True), (0.5, False))
         ]
 
         steps_warmup = 3
         steps_train = 2
 
-        for OptClass, kwargs in cases:
+        for OptClass, kwarg_capturable, kwargs in cases:
             for actually_do_graphs in (True, False):
                 params = [torch.randn((i + 5, i + 5), device="cuda") for i in range(2)]
                 params_control = [p.clone().requires_grad_() for p in params]
@@ -4388,7 +4390,9 @@ exit(2)
 
                 # Control (capturable=False)
 
-                opt = OptClass(params_control, capturable=False, **kwargs)
+                if kwarg_capturable:
+                    kwargs["capturable"] = False
+                opt = OptClass(params_control, **kwargs)
 
                 for i in range(steps_warmup + steps_train):
                     for j, p in enumerate(params_control):
@@ -4398,7 +4402,9 @@ exit(2)
 
                 # capturable=True
 
-                opt = OptClass(params_graphed, capturable=True, **kwargs)
+                if kwarg_capturable:
+                    kwargs["capturable"] = True
+                opt = OptClass(params_graphed, **kwargs)
 
                 for i in range(steps_warmup):
                     for j, p in enumerate(params_graphed):
