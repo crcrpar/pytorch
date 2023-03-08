@@ -64,6 +64,21 @@ class ForeachFuncWrapper:
         return inputs[0] if self._is_inplace else actual
 
 
+class InplaceForeachVersionBumpCheck:
+
+    def __init__(self, testcase: TestCase, tensorlist: "List[torch.Tensor]") -> None:
+        self._testcase = testcase
+        self._tensorlist = tensorlist
+        self._orig_version_counts = [t._version for t in tensorlist]
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # note(crcrpar): some methods e.g. `_binary_test` could call the given inplace function multiple times
+        self._testcase.assertGreaterEqual([t._version for t in self._tensorlist], self._orig_version_counts)
+
+
 def get_transform_func(num_tensors, dtype, device, is_fastpath):
     def transform(t):
         if not torch.is_tensor(t):
@@ -156,11 +171,13 @@ class TestForeach(TestCase):
                 is_fastpath and not disable_fastpath, False,
                 alpha=alpha, zero_size=zero_size, scalar_self_arg=False,
             )
-            self._binary_test(
-                dtype, inplace_op, inplace_ref, [sample.input, rhs_arg],
-                is_fastpath and not disable_fastpath, True,
-                alpha=alpha, zero_size=zero_size, scalar_self_arg=False,
-            )
+
+            with InplaceForeachVersionBumpCheck(self, sample.input):
+                self._binary_test(
+                    dtype, inplace_op, inplace_ref, [sample.input, rhs_arg],
+                    is_fastpath and not disable_fastpath, True, alpha=alpha,
+                    zero_size=zero_size, scalar_self_arg=False,
+                )
 
             if op.supports_autograd and dtype in floating_types() and not zero_size:
                 transformed_sample = sample.transform(get_transform_func(len(sample.input), dtype, device, is_fastpath))
@@ -217,9 +234,10 @@ class TestForeach(TestCase):
             self._pointwise_test(
                 wrapped_op, ref, inputs, is_fastpath and not disable_fastpath, False, values=values, zero_size=zero_size
             )
-            self._pointwise_test(
-                inplace_op, inplace_ref, inputs, is_fastpath and not disable_fastpath, True,
-                values=values, zero_size=zero_size)
+            with InplaceForeachVersionBumpCheck(self, sample.input):
+                self._pointwise_test(
+                    inplace_op, inplace_ref, inputs, is_fastpath and not disable_fastpath,
+                    True, values=values, zero_size=zero_size)
 
             if op.supports_autograd and dtype in floating_types() and not zero_size:
                 transformed_sample = sample.transform(get_transform_func(len(sample.input), dtype, device, is_fastpath))
@@ -339,12 +357,13 @@ class TestForeach(TestCase):
     def _inplace_unary_test(self, inplace, inplace_ref, inputs, is_fastpath, **kwargs):
         copied_inputs = [[t.clone().detach() for t in tensors] for tensors in inputs]
         try:
-            inplace(inputs, self.is_cuda, is_fastpath, **kwargs)
+            with InplaceForeachVersionBumpCheck(self, inputs[0]):
+                inplace(inputs, self.is_cuda, is_fastpath, **kwargs)
         except RuntimeError as e:
             with self.assertRaisesRegex(type(e), re.escape(str(e))):
                 inplace_ref(copied_inputs)
         else:
-            inplace_ref(copied_inputs),
+            inplace_ref(copied_inputs)
             self.assertEqual(copied_inputs, inputs)
 
     @ops(foreach_unary_op_db)
@@ -712,7 +731,8 @@ class TestForeach(TestCase):
 
             inplace_inputs = [[t.clone() for t in inputs[0]]] + inputs[1:]
             inplace_actual = inplace_op(inplace_inputs, self.is_cuda, is_fastpath, **kwargs)
-            self.assertEqual(inplace_actual, expected)
+            with InplaceForeachVersionBumpCheck(self, inplace_inputs[0]):
+                self.assertEqual(inplace_actual, expected)
 
             if op.supports_autograd and dtype in floating_types() and not zero_size:
                 transformed_sample = sample.transform(get_transform_func(len(sample.input), dtype, device, is_fastpath))
