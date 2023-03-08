@@ -5,8 +5,9 @@ from typing import cast, Dict, List, Match, Optional, Sequence, Set, Tuple
 from torchgen import local
 
 from torchgen.api import cpp
-from torchgen.api.types import BaseCType, Binding, NamedCType, tensorListT
+from torchgen.api.types import BaseCType, Binding, NamedCType, tensorListT, tensorT
 from torchgen.model import (
+    Argument,
     FunctionSchema,
     ListType,
     NativeFunction,
@@ -307,8 +308,7 @@ def dispatch_strategy(fn: NativeFunctionWithDifferentiabilityInfo) -> str:
 
 
 def is_foreach_func(f: NativeFunction) -> bool:
-    base_op_name = f.func.name.name
-    return base_op_name.base.startswith("_foreach_") and not base_op_name.inplace
+    return f.func.name.name.base.startswith("_foreach_")
 
 
 # Checks if `function_schema` is a native, non-foreach function which `f`, a foreach function
@@ -371,12 +371,16 @@ def gen_foreach_derivativeinfo(
         map_refarg2foreacharg[ref_arg.name] = arg.name
         map_name2arg[arg.name] = arg
 
+    is_functional = foreach_function.func.kind() == SchemaKind.functional
     all_saved_inputs, all_saved_outputs, all_var_names = [], [], []
     modified_derivative_formulas = []
     for i, derivative in enumerate(ref_diff_info.derivatives):
-        modified_formula = derivative.formula.replace("grad", "grads[i]").replace(
-            "result", "result[i]"
-        )
+        if is_functional:
+            modified_formula = derivative.formula.replace("grad", "grads[i]").replace(
+                "result", "result[i]"
+            )
+        else:
+            modified_formula = derivative.formula
         saved_inputs, saved_outputs = [], []
         # note(crcrpar): This context seems necessary to call `cpp.argument_type`
         with local.parametrize(
@@ -386,7 +390,10 @@ def gen_foreach_derivativeinfo(
             for ref_input in derivative.saved_inputs:
                 ref_input_jit_name = ref_input.expr.split(".")[0]
                 mapped_name = map_refarg2foreacharg[ref_input_jit_name]
-                if isinstance(map_name2arg[mapped_name].type, ListType):
+                if (
+                    isinstance(map_name2arg[mapped_name].type, ListType)
+                    and is_functional
+                ):
                     mapped_expr = mapped_name + "[i]"
                 else:
                     mapped_expr = mapped_name
@@ -395,7 +402,17 @@ def gen_foreach_derivativeinfo(
                     cast(str, ref_input.nctype.name), new_expr
                 )
 
-                nctype = cpp.argument_type(map_name2arg[mapped_name], binds=mapped_name)
+                argument = map_name2arg[mapped_name]
+                if not is_functional:
+                    type_ = argument.type
+                    if type_ == tensorListT:
+                        type_ = tensorT
+                    if isinstance(type_, ListType):
+                        type_ = type_.elem
+                    argument = Argument(
+                        argument.name, type_, argument.default, argument.annotation
+                    )
+                nctype = cpp.argument_type(argument, binds=mapped_name)
                 canonical_nctype = NamedCType(
                     nctype.name, nctype.type.remove_const_ref()
                 )
@@ -407,7 +424,10 @@ def gen_foreach_derivativeinfo(
                     saved_outputs.append(
                         SavedAttribute(
                             nctype=NamedCType(
-                                name="result", type=BaseCType(tensorListT)
+                                name="result",
+                                type=BaseCType(
+                                    tensorListT if is_functional else tensorT
+                                ),
                             ),
                             expr="result",
                         )
@@ -445,8 +465,10 @@ def gen_foreach_derivativeinfo(
     return DifferentiabilityInfo(
         name=foreach_function.func.name.name.base,
         func=foreach_function,
-        op="Foreach{}{}".format(
-            ref_diff_info.op, foreach_function.func.name.overload_name
+        op="{}Foreach{}{}".format(
+            "" if is_functional else "Inplace",
+            ref_diff_info.op,
+            foreach_function.func.name.overload_name,
         ),
         derivatives=modified_derivative_formulas,
         forward_derivatives=[],
@@ -497,7 +519,8 @@ def match_differentiability_info(
         # i.e mul() for mul_() or mul_out()
         f_sig = f.func.signature(strip_default=True)
         if f_sig in functional_info_by_signature:
-            return functional_info_by_signature[f_sig], False
+            if not is_foreach_func(f):
+                return functional_info_by_signature[f_sig], False
 
         # (3) Some operators have a derivative explicitly defined for the mutable
         # variant, but get a code-generated out-of-place variant which does *not*

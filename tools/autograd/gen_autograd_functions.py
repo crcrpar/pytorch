@@ -520,8 +520,11 @@ def process_function(info: DifferentiabilityInfo, template: CodeTemplate) -> str
     getter_definitions: List[str] = []
     py_getsetdef_structs: List[str] = []
 
+    is_foreach_op = info.func.func.name.name.base.startswith("_foreach_")
+    is_inplace_foreach_op = info.func.func.name.name.inplace and is_foreach_op
+
     for arg in info.args_with_derivatives:
-        if arg.type in TENSOR_LIST_LIKE_CTYPES:
+        if arg.type in TENSOR_LIST_LIKE_CTYPES and not is_inplace_foreach_op:
             size = f"{arg.name}_size_"
             saved_list_sizes.append(f"size_t {arg.name}_size_;")
         else:
@@ -675,17 +678,25 @@ def process_function(info: DifferentiabilityInfo, template: CodeTemplate) -> str
         elif type == ArrayRefCType(
             elem=BaseCType(type=BaseCppType(ns="at", name="Scalar"))
         ):
-            saved_variables.append(f"std::vector<at::Scalar> {name};")
-            saved_variables.append(f"bool {name}_released_ = false;")
-            # Just clear() is sufficient, we don't need to loop and clear each variable.
-            # Because the SavedVariable owns a tensor and a grad_fn, removing the SavedVariable makes them go away as well.
-            release_variables.append(f"{name}.clear();")
-            # release_variables.append(f"{name}_released_ = true;")
-            # unpack.append(f"auto {name} = unpack_list({name}_);")
-            # asserts.append(f"TORCH_CHECK(!{name}_released_, ERR_BACKWARD_TWICE);")
-            getter_definitions.append(
-                CodeTemplate(
-                    """\
+            if is_inplace_foreach_op:
+                type_in_bwd_function = BaseCType(scalarT)
+                getter_def, body = MISC_GETTER_DEFS[type_in_bwd_function]
+                saved_variables.append(f"{type_in_bwd_function.cpp_type()} {name};")
+                getter_definitions.append(
+                    getter_def.substitute(op=info.op, name=name, body=body)
+                )
+            else:
+                saved_variables.append(f"std::vector<at::Scalar> {name};")
+                saved_variables.append(f"bool {name}_released_ = false;")
+                # Just clear() is sufficient, we don't need to loop and clear each variable.
+                # Because the SavedVariable owns a tensor and a grad_fn, removing the SavedVariable makes them go away as well.
+                release_variables.append(f"{name}.clear();")
+                # release_variables.append(f"{name}_released_ = true;")
+                # unpack.append(f"auto {name} = unpack_list({name}_);")
+                # asserts.append(f"TORCH_CHECK(!{name}_released_, ERR_BACKWARD_TWICE);")
+                getter_definitions.append(
+                    CodeTemplate(
+                        """\
 PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
   HANDLE_TH_ERRORS
   const auto *node = static_cast<${op}*>(self->cdata.get());
@@ -697,13 +708,13 @@ PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
   ${body}
   END_HANDLE_TH_ERRORS
 }
-                            """
-                ).substitute(
-                    op=info.op,
-                    name=name,
-                    body=GETTER_BODY_VEC_SCALAR,
+                                """
+                    ).substitute(
+                        op=info.op,
+                        name=name,
+                        body=GETTER_BODY_VEC_SCALAR,
+                    )
                 )
-            )
         else:
             # Check for indicators that you're putting a non-owning reference
             # into the saved variable field.  If this is spuriously firing,
@@ -780,12 +791,14 @@ PyObject* THP${op}_${name}_getter(THPCppFunction *self, void *_unused) {
                 if len(matching_args) == 1:
                     # We can add undefined grad support if the input variable is a Tensor
                     arg = matching_args[0]
-                    if isinstance(arg.argument, Argument) and str(
-                        arg.argument.type
-                    ) in ("Tensor", "Tensor?"):
+                    if isinstance(arg.argument, Argument) and (
+                        str(arg.argument.type) in ("Tensor", "Tensor?")
+                        or is_inplace_foreach_op
+                        and str(arg.argument.type) == "Tensor[]"
+                    ):
                         formula = "any_grad_defined ? (" + formula + ") : Tensor()"
                         checks_any_grad_defined = True
-            if info.name.startswith("_foreach_"):
+            if is_foreach_op and not is_inplace_foreach_op:
                 derivative_template = DERIVATIVE_SINGLE_FOREACH
             else:
                 derivative_template = DERIVATIVE_SINGLE
