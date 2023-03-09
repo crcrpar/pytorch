@@ -691,7 +691,7 @@ def generate_return_type_definition_and_map_entry(
     typenames: Dict[
         str, str
     ] = {}  # map from unique name + field name lists to typedef name
-    definitions: List[str] = []  # function defintion to register the typedef
+    definitions: List[str] = []  # function definitions to register the typedef
     map_entries: List[
         str
     ] = []  # C++ map entry of <function_name, function creates it namedtuple>

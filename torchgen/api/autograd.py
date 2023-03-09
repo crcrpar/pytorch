@@ -405,8 +405,8 @@ def gen_foreach_derivativeinfo(
                 argument = map_name2arg[mapped_name]
                 if not is_functional:
                     type_ = argument.type
-                    if type_ == tensorListT:
-                        type_ = tensorT
+                    if type_ == tensorListT:  # type: ignore[comparison-overlap]
+                        type_ = cast(Type, tensorT)  # type: ignore[assignment]
                     if isinstance(type_, ListType):
                         type_ = type_.elem
                     argument = Argument(

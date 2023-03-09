@@ -1158,13 +1158,16 @@ def emit_body(
         op = info.op if info is not None and info.has_derivatives else "NotImplemented"
         setup = []
 
+        assign_grad_fn_template = ASSIGN_GRAD_FN
         substitutions = {
             "op": op,
             "op_ctor": ""
             if info is not None and info.has_derivatives
             else f'"{cpp.name(f.func)}"',
+            "args_with_derivatives": [arg.name for arg in args_with_derivatives],
         }
         if is_inplace_foreach_op:
+            assign_grad_fn_template = ASSIGN_VECTOR_OF_GRAD_FN
             args_for_grad_fn = [
                 arg.name + ("[i]" if hasattr(arg.type, "size") else "")
                 for arg in args_with_derivatives
@@ -1176,15 +1179,9 @@ def emit_body(
                     break
             assert list_like_arg, [a.name for a in f.func.arguments.flat_non_out]
             substitutions["irange"] = f"{list_like_arg}.size()"
-        else:
-            args_for_grad_fn = [arg.name for arg in args_with_derivatives]
-        substitutions["args_with_derivatives"] = args_for_grad_fn
+            substitutions["args_with_derivatives"] = args_for_grad_fn
 
-        setup.extend(
-            (ASSIGN_GRAD_FN if not is_inplace_foreach_op else ASSIGN_VECTOR_OF_GRAD_FN)
-            .substitute(**substitutions)
-            .split("\n")
-        )
+        setup.extend(assign_grad_fn_template.substitute(**substitutions).split("\n"))  # type: ignore[arg-type]
         setup.extend(emit_save_inputs())
 
         body.extend(
@@ -1269,13 +1266,14 @@ def emit_body(
         # assign the saved variables to the generated grad_fn
         name2origarg = {}
         if is_inplace_foreach_op:
+            assert info is not None
             for sa in saved_variables:
                 name = sa.nctype.name
                 if not is_output:
                     mapped_names = [
                         arg
                         for arg in info.func.func.arguments.flat_non_out
-                        if (name in arg.name or arg.name in name)
+                        if name in arg.name or arg.name in name  # type: ignore[operator]
                     ]
                 else:
                     assert (
@@ -1284,8 +1282,8 @@ def emit_body(
                     mapped_names = []
                     if info.func.func.arguments.out:
                         saved_result = info.func.func.arguments.out[0]
-                        assert saved_result.nctype.name == "result"
-                        mapped_names.append(Argument("result", tensorListT))
+                        assert saved_result.nctype.name == "result"  # type: ignore[attr-defined]
+                        mapped_names.append(Argument("result", tensorListT))  # type: ignore[arg-type, call-arg]
                 if not is_output and not mapped_names:
                     raise RuntimeError(f"{sa = }")
                 else:
@@ -1294,7 +1292,7 @@ def emit_body(
         stmts: List[str] = []
         for arg in saved_variables:
             name = (
-                arg.nctype.name.name
+                arg.nctype.name.name  # type: ignore[assignment]
                 if isinstance(arg.nctype.name, SpecialArgName)
                 else arg.nctype.name
             )
@@ -1306,7 +1304,7 @@ def emit_body(
             if is_inplace_foreach_op:
                 var_suffix = "[i]"
             if orig_arg is not None and (
-                orig_arg.type == tensorListT or hasattr(orig_arg.type, "elem")
+                orig_arg.type == tensorListT or hasattr(orig_arg.type, "elem")  # type: ignore[comparison-overlap]
             ):
                 var_suffix = "[i]"
             if (
@@ -1316,16 +1314,16 @@ def emit_body(
                 or (is_output and type == BaseCType(scalarT))
             ):
                 var = name
-                name += "_"
-                if var == "self" and inplace:
+                name += "_"  # type: ignore[operator]
+                if var == "self" and inplace:  # type: ignore[comparison-overlap]
                     stmts_prepend = (
                         f"if (!original_self{var_suffix}.has_value()) original_self{var_suffix} = "
                         f"self{var_suffix}.clone()"
                     )
-                    var = f"original_self{var_suffix}.value()"
+                    var = f"original_self{var_suffix}.value()"  # type: ignore[assignment]
                     assert not is_output
                 if inplace and is_output:
-                    var = "self"
+                    var = "self"  # type: ignore[assignment]
                     is_inplace_view = f"{var}{var_suffix}.is_view()"
                     expr = f"SavedVariable({var}{var_suffix}, {str(is_output).lower()}, {is_inplace_view})"
                 elif inplace and var_suffix in var:
@@ -1340,13 +1338,13 @@ def emit_body(
                 if not is_inplace_foreach_op:
                     expr = f"make_saved_variable_list({name})"
                 else:
-                    if is_output and name == "result":
+                    if is_output and name == "result":  # type: ignore[comparison-overlap]
                         is_inplace_view = f"self{var_suffix}.is_view()"
                         expr = f"SavedVariable(self{var_suffix}, {str(is_output).lower()}, {is_inplace_view})"
                     else:
                         is_inplace_view = f"{name}{var_suffix}.is_view()"
                         expr = f"SavedVariable({name}{var_suffix}, {str(is_output).lower()}, {is_inplace_view})"
-                name += "_"
+                name += "_"  # type: ignore[operator]
             elif type == BaseCType(intArrayRefT):
                 expr = expr + ".vec()"
             elif type == BaseCType(symIntArrayRefT):
