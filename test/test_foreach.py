@@ -100,6 +100,10 @@ def clone(arg):
         return arg
 
 
+def assert_multiple_grad_fns(tensors, test_case):
+    test_case.assertEqual(len({t.grad_fn for t in tensors}), len(tensors))
+
+
 # note(crcrpar): `zero_size` is `False` unless (dtype, device) == (torch.float32, "cuda")
 # as the pair would go through `multi_tensor_apply_kernel` if inputs are not zero size.
 class TestForeach(TestCase):
@@ -196,6 +200,9 @@ class TestForeach(TestCase):
                     self.assertEqual([t.grad for t in tensors], [t.grad for t in ref_tensors])
                     if isinstance(rhs_arg, list) and isinstance(rhs_arg[0], torch.Tensor):
                         self.assertEqual([t.grad for t in rhs_arg], [t.grad for t in ref_rhs_arg])
+                    tensors = [t.clone().detach().requires_grad_() for t in tensors]
+                    inplace_op([tensors, rhs_arg], is_cuda=False, is_fastpath=False)
+                    assert_multiple_grad_fns(tensors, self)
             if (
                 op.supports_scalar_self_arg
                 and isinstance(rhs_arg, Number)
@@ -257,6 +264,10 @@ class TestForeach(TestCase):
                     for op_list, ref_list in zip(rhs_arg, ref_rhs_arg):
                         if isinstance(op_list, list) and isinstance(op_list[0], torch.Tensor):
                             self.assertEqual([t.grad for t in op_list], [t.grad for t in ref_list])
+
+                    tensors = [t.clone().detach().requires_grad_() for t in tensors]
+                    inplace_op([tensors, *rhs_arg], is_cuda=False, is_fastpath=False)
+                    assert_multiple_grad_fns(tensors, self)
 
             if is_fastpath and isinstance(values, list) and not zero_size:
                 sample = sample.transform(lambda t: t.clone().detach() if torch.is_tensor(t) else t)
@@ -403,9 +414,16 @@ class TestForeach(TestCase):
                     for _ in range(num_tensors)
                 ]
                 ref_tensors = [t.clone().detach().requires_grad_() for t in tensors]
-                sum(wrapped_op.func(tensors)).mean().backward()
+                out = wrapped_op.func(tensors)
+                sum(out).mean().backward()
                 sum([ref.func(t) for t in ref_tensors]).mean().backward()
                 self.assertEqual([t.grad for t in tensors], [t.grad for t in ref_tensors])
+
+                self.assertEqual(len({t.grad_fn for t in out}), 1)
+
+                # set both to False to skip multi_tensor_apply_kernel check
+                inplace_op([out], False, False)
+                assert_multiple_grad_fns(out, self)
 
     @ops(foreach_reduce_op_db)
     @parametrize("is_fastpath", (True, False))
@@ -753,6 +771,10 @@ class TestForeach(TestCase):
                     [t.grad for t in transformed_sample.input],
                     [t.grad for t in ref_tensors],
                 )
+
+                tensors = [t.clone().detach().requires_grad_() for t in transformed_sample.input]
+                inplace_op((tensors, *inputs[1:]), False, False, **kwargs)
+                assert_multiple_grad_fns(tensors, self)
 
     @onlyCUDA
     @ops(foreach_reduce_op_db)
