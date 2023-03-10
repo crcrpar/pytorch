@@ -418,12 +418,36 @@ class TestForeach(TestCase):
                 sum(out).mean().backward()
                 sum([ref.func(t) for t in ref_tensors]).mean().backward()
                 self.assertEqual([t.grad for t in tensors], [t.grad for t in ref_tensors])
-
                 self.assertEqual(len({t.grad_fn for t in out}), 1)
 
+                # per-tensor `grad_fn` check.
+                hook_buffer = []
+
+                def get_hook(i):
+
+                    def hook(_):
+                        hook_buffer.append(i)
+
+                    return hook
+
+                inplace_input_tensors = [(1 - torch.rand(())).requires_grad_() for _ in range(num_tensors)]
+                inplace_inputs = [0.1 + t for t in inplace_input_tensors]
                 # set both to False to skip multi_tensor_apply_kernel check
-                inplace_op([out], False, False)
-                assert_multiple_grad_fns(out, self)
+                inplace_op([inplace_inputs], False, False)
+                assert_multiple_grad_fns(inplace_inputs, self)
+
+                cloned_tensors = []
+                for i, t in enumerate(inplace_inputs):
+                    c = t.clone()
+                    c.register_hook(get_hook(i))
+                    cloned_tensors.append(c)
+
+                torch.autograd.grad(cloned_tensors[0] * 1, inputs=(inplace_input_tensors[0],), retain_graph=True)
+                self.assertEqual(hook_buffer, [0])
+                hook_buffer.clear()
+
+                torch.autograd.grad(sum(cloned_tensors), inputs=tuple(inplace_input_tensors), retain_graph=True)
+                self.assertEqual(hook_buffer, list(range(num_tensors - 1, -1, -1)))
 
     @ops(foreach_reduce_op_db)
     @parametrize("is_fastpath", (True, False))

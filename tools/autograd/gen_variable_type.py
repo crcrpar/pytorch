@@ -1285,7 +1285,7 @@ def emit_body(
                         assert saved_result.nctype.name == "result"  # type: ignore[attr-defined]
                         mapped_names.append(Argument("result", tensorListT))  # type: ignore[arg-type, call-arg]
                 if not is_output and not mapped_names:
-                    raise RuntimeError(f"{sa = }")
+                    raise RuntimeError(f"{sa}")
                 else:
                     if mapped_names:
                         name2origarg[name] = mapped_names[0]
