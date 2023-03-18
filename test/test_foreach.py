@@ -444,10 +444,17 @@ class TestForeach(TestCase):
 
                 torch.autograd.grad(cloned_tensors[0] * 1, inputs=(inplace_input_tensors[0],), retain_graph=True)
                 self.assertEqual(hook_buffer, [0])
+                inplace_input_tensors[0].grad = None
                 hook_buffer.clear()
 
-                torch.autograd.grad(sum(cloned_tensors), inputs=tuple(inplace_input_tensors), retain_graph=True)
+                torch.autograd.grad(sum(cloned_tensors), inputs=tuple(inplace_input_tensors), retain_graph=False)
                 self.assertEqual(hook_buffer, list(range(num_tensors - 1, -1, -1)))
+
+                ref_inplace_input_tensors = [t.clone().detach().requires_grad_() for t in inplace_input_tensors]
+                ref_inplace_inputs = [0.1 + t for t in ref_inplace_input_tensors]
+                ref_output = inplace_ref([ref_inplace_inputs])
+                torch.autograd.grad(sum(ref_output), inputs=tuple(ref_inplace_input_tensors))
+                self.assertEqual([t.grad for t in inplace_input_tensors], [t.grad for t in ref_inplace_input_tensors])
 
     @ops(foreach_reduce_op_db)
     @parametrize("is_fastpath", (True, False))
