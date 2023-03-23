@@ -201,7 +201,7 @@ class TestForeach(TestCase):
                     if isinstance(rhs_arg, list) and isinstance(rhs_arg[0], torch.Tensor):
                         self.assertEqual([t.grad for t in rhs_arg], [t.grad for t in ref_rhs_arg])
                     tensors = [t.clone().detach().requires_grad_() for t in tensors]
-                    inplace_op([tensors, rhs_arg], is_cuda=False, is_fastpath=False)
+                    inplace_op([tensors, rhs_arg], is_cuda=False, is_fastpath=False, zero_size=zero_size)
                     assert_multiple_grad_fns(tensors, self)
             if (
                 op.supports_scalar_self_arg
@@ -266,7 +266,7 @@ class TestForeach(TestCase):
                             self.assertEqual([t.grad for t in op_list], [t.grad for t in ref_list])
 
                     tensors = [t.clone().detach().requires_grad_() for t in tensors]
-                    inplace_op([tensors, *rhs_arg], is_cuda=False, is_fastpath=False)
+                    inplace_op([tensors, *rhs_arg], is_cuda=False, is_fastpath=False, zero_size=zero_size)
                     assert_multiple_grad_fns(tensors, self)
 
             if is_fastpath and isinstance(values, list) and not zero_size:
@@ -433,7 +433,7 @@ class TestForeach(TestCase):
                 inplace_input_tensors = [(1 - torch.rand(())).requires_grad_() for _ in range(num_tensors)]
                 inplace_inputs = [0.1 + t for t in inplace_input_tensors]
                 # set both to False to skip multi_tensor_apply_kernel check
-                inplace_op([inplace_inputs], False, False)
+                inplace_op([inplace_inputs], False, False, zero_size=zero_size)
                 assert_multiple_grad_fns(inplace_inputs, self)
 
                 cloned_tensors = []
@@ -804,7 +804,7 @@ class TestForeach(TestCase):
                 )
 
                 tensors = [t.clone().detach().requires_grad_() for t in transformed_sample.input]
-                inplace_op((tensors, *inputs[1:]), False, False, **kwargs)
+                inplace_op((tensors, *inputs[1:]), False, False, **kwargs, zero_size=False)
                 assert_multiple_grad_fns(tensors, self)
 
     @onlyCUDA
