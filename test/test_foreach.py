@@ -201,8 +201,17 @@ class TestForeach(TestCase):
                     if isinstance(rhs_arg, list) and isinstance(rhs_arg[0], torch.Tensor):
                         self.assertEqual([t.grad for t in rhs_arg], [t.grad for t in ref_rhs_arg])
                     tensors = [t.clone().detach().requires_grad_() for t in tensors]
+                    ref_tensors = [t.clone().detach().requires_grad_() for t in tensors]
+                    ref_tensors = [t.clone() for t in ref_tensors]
                     inplace_op([tensors, rhs_arg], is_cuda=False, is_fastpath=False, zero_size=zero_size)
                     assert_multiple_grad_fns(tensors, self)
+
+                    inplace_ref([ref_tensors, rhs_arg])
+                    torch.autograd.backward(sum([t.clone() for t in ref_tensors]).sum(), inputs=ref_tensors)
+                    if inplace_op.func not in (torch._foreach_minimum_, torch._foreach_maximum_):
+                        torch.autograd.backward(sum([t.clone() for t in tensors]).sum(), inputs=tensors)
+                        grads = [t.grad for t in tensors]
+                        self.assertEqual(grads, [t.grad for t in ref_tensors])
             if (
                 op.supports_scalar_self_arg
                 and isinstance(rhs_arg, Number)
@@ -266,8 +275,14 @@ class TestForeach(TestCase):
                             self.assertEqual([t.grad for t in op_list], [t.grad for t in ref_list])
 
                     tensors = [t.clone().detach().requires_grad_() for t in tensors]
+                    ref_tensors = [t.clone().detach().requires_grad_() for t in tensors]
+                    ref_tensors = [t.clone() for t in ref_tensors]
                     inplace_op([tensors, *rhs_arg], is_cuda=False, is_fastpath=False, zero_size=zero_size)
                     assert_multiple_grad_fns(tensors, self)
+                    inplace_ref([ref_tensors, *rhs_arg])
+                    torch.autograd.backward(sum([t.clone() for t in tensors]).sum(), inputs=tensors)
+                    torch.autograd.backward(sum([t.clone() for t in ref_tensors]).sum(), inputs=ref_tensors)
+                    self.assertEqual([t.grad for t in tensors], [t.grad for t in ref_tensors])
 
             if is_fastpath and isinstance(values, list) and not zero_size:
                 sample = sample.transform(lambda t: t.clone().detach() if torch.is_tensor(t) else t)
