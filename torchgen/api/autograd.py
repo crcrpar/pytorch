@@ -519,6 +519,7 @@ def match_differentiability_info(
         # i.e mul() for mul_() or mul_out()
         f_sig = f.func.signature(strip_default=True)
         if f_sig in functional_info_by_signature:
+            # note(crcrpar): Prevent in-place functions from picking up their out-place ones.
             if not is_foreach_func(f):
                 return functional_info_by_signature[f_sig], False
 
