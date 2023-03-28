@@ -1278,24 +1278,23 @@ def emit_body(
             for sa in saved_variables:
                 name = sa.nctype.name
                 assert isinstance(name, str)
+                mapped_args = []
                 if not is_output:
-                    mapped_names = [
+                    mapped_args.extend([
                         arg
                         for arg in info.func.func.arguments.flat_non_out
                         if name in arg.name or arg.name in name
-                    ]
+                    ])
                 else:
                     assert (
                         len(info.func.func.arguments.out) < 2
                     ), info.func.func.arguments.out
-                    mapped_names = []
-                if not is_output and not mapped_names:
+                if not is_output and not mapped_args:
                     raise RuntimeError(f"{sa}")
                 else:
-                    if mapped_names:
-                        name2origarg[name] = mapped_names[0]
-            if "clamp_min" in f.func.name.name.base:
-                print(f"# {f.func.name.name.base = }, {f.func.name.overload_name = }, {name2origarg = }")
+                    if mapped_args:
+                        assert len(mapped_args) == 1, mapped_args
+                        name2origarg[name] = mapped_args[0]
         stmts: List[str] = []
         for arg in saved_variables:
             name = (
@@ -1310,9 +1309,7 @@ def emit_body(
                 name2origarg[name] if name in name2origarg else None
             )
             var_suffix = ""
-            if is_inplace_foreach_op:
-                var_suffix = "[i]"
-            if orig_arg is not None and isinstance(orig_arg.type, ListType):
+            if is_inplace_foreach_op or (orig_arg is not None and isinstance(orig_arg.type, ListType)) or f.func.name.overload_name.endswith("List"):
                 var_suffix = "[i]"
             if (
                 type == BaseCType(tensorT)
@@ -1323,6 +1320,8 @@ def emit_body(
                 var = name
                 name += "_"
                 if var == "self" and inplace:
+                    if is_foreach_op:
+                        var_suffix = "[i]"
                     stmts_prepend = (
                         f"if (!original_self{var_suffix}.has_value()) original_self{var_suffix} = "
                         f"self{var_suffix}.clone()"
@@ -1364,16 +1363,15 @@ def emit_body(
                 elem=BaseCType(type=BaseCppType(ns="at", name="Scalar"))
             ):
                 expr = expr + ".vec()"
-            elif (
-                type == BaseCType(scalarT)
-                and orig_arg
-                and isinstance(orig_arg.type, ListType)
-            ):
-                print(f"{f.func.name.name.base = }, {name = }, {orig_arg.type = }")
-                expr = expr + "[i]"
+            elif type == BaseCType(scalarT) and orig_arg is not None:
+                if f.func.name.overload_name == "ScalarList":
+                    expr = expr + "[i]"
             guard = guard_for(arg)
-            if name == "min" and is_foreach_op and orig_arg is not None:
-                print(f"{name = }, {expr = }, {f.func.name = }, {type = }, {orig_arg.type = }, {f.func.arguments = }")
+            if orig_arg is not None:
+                new_name = orig_arg.name
+                if "List" in f.func.name.overload_name or "self" in expr:
+                    new_name += "[i]"
+                expr = expr.replace(new_name, orig_arg.name)
             if guard is None:
                 if stmts_prepend:
                     stmts.append(f"{stmts_prepend};")
