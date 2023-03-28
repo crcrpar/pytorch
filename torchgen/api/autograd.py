@@ -336,7 +336,7 @@ def gen_foreach_derivativeinfo(
     functional_info_by_signature: Dict[
         FunctionSchema, Dict[str, DifferentiabilityInfo]
     ],
-) -> Optional[DifferentiabilityInfo]:
+) -> Tuple[Optional[DifferentiabilityInfo], bool]:
     ref_diff_info: Optional[DifferentiabilityInfo] = None
     for function_schema in functional_info_by_signature:
         if not is_reference_for_foreach(foreach_function, function_schema):
@@ -359,7 +359,7 @@ def gen_foreach_derivativeinfo(
         if ref_diff_info is not None:
             break
     if ref_diff_info is None:
-        return None
+        return None, False
 
     map_refarg2foreacharg, map_name2arg = {}, {}
     for i, (arg, ref_arg) in enumerate(
@@ -372,6 +372,10 @@ def gen_foreach_derivativeinfo(
         map_name2arg[arg.name] = arg
 
     is_functional = foreach_function.func.kind() == SchemaKind.functional
+
+    if not is_functional:
+        return ref_diff_info, False
+
     all_saved_inputs, all_saved_outputs, all_var_names = [], [], []
     modified_derivative_formulas = []
     for i, derivative in enumerate(ref_diff_info.derivatives):
@@ -462,24 +466,27 @@ def gen_foreach_derivativeinfo(
             for arg in foreach_function.func.arguments.flat_non_out
             if arg.name in all_var_names
         ]
-    return DifferentiabilityInfo(
-        name=foreach_function.func.name.name.base,
-        func=foreach_function,
-        op="{}Foreach{}{}".format(
-            "" if is_functional else "Inplace",
-            ref_diff_info.op,
-            foreach_function.func.name.overload_name,
+    return (
+        DifferentiabilityInfo(
+            name=foreach_function.func.name.name.base,
+            func=foreach_function,
+            op="{}Foreach{}{}".format(
+                "" if is_functional else "Inplace",
+                ref_diff_info.op,
+                foreach_function.func.name.overload_name,
+            ),
+            derivatives=modified_derivative_formulas,
+            forward_derivatives=[],
+            all_saved_inputs=tuple(set(all_saved_inputs)),
+            all_saved_outputs=tuple(set(all_saved_outputs)),
+            available_named_gradients=(),
+            used_named_gradients=set(),
+            args_with_derivatives=args_with_derivatives,
+            non_differentiable_arg_names=[],
+            output_differentiability=None,
+            output_differentiability_conditions=None,
         ),
-        derivatives=modified_derivative_formulas,
-        forward_derivatives=[],
-        all_saved_inputs=tuple(set(all_saved_inputs)),
-        all_saved_outputs=tuple(set(all_saved_outputs)),
-        available_named_gradients=(),
-        used_named_gradients=set(),
-        args_with_derivatives=args_with_derivatives,
-        non_differentiable_arg_names=[],
-        output_differentiability=None,
-        output_differentiability_conditions=None,
+        True,
     )
 
 
@@ -542,11 +549,11 @@ Attempted to convert a derivative formula for a mutable operator
 
         # (4) Generate derivative information of foreach functions if none is defined in `derivatives.yaml`
         if is_foreach_func(f):
-            diff_info = gen_foreach_derivativeinfo(
+            diff_info, is_generated = gen_foreach_derivativeinfo(
                 f, differentiability_infos, functional_info_by_signature
             )
-            if diff_info is None:
-                return None, False
+            if diff_info is None or not is_generated:
+                return (None if diff_info is None else {"Default": diff_info}), False
             diff_info_dict = {"Default": diff_info}
             if f.func not in differentiability_infos:
                 differentiability_infos[f.func] = diff_info_dict
