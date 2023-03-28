@@ -1013,7 +1013,7 @@ def emit_body(
         if len(differentiable) != len(names):
             missing = names - {arg.name for arg in differentiable}
             raise RuntimeError(
-                f"Missing arguments for derivatives: {missing} in {info.name}"
+                f"{name} missing arguments for derivatives: {missing} in {info.name}"
             )
         return differentiable
 
@@ -1247,7 +1247,7 @@ def emit_body(
 
             all_forward_grad_cond = []
             for derivative in fw_derivatives:
-                if derivative.required_original_self_value:
+                if derivative.required_original_self_value and not is_foreach_op:
                     all_forward_grad_cond.append(
                         get_any_has_forward_grad_name(derivative.var_names)
                     )
@@ -1294,6 +1294,8 @@ def emit_body(
                 else:
                     if mapped_names:
                         name2origarg[name] = mapped_names[0]
+            if "clamp_min" in f.func.name.name.base:
+                print(f"# {f.func.name.name.base = }, {f.func.name.overload_name = }, {name2origarg = }")
         stmts: List[str] = []
         for arg in saved_variables:
             name = (
@@ -1367,8 +1369,11 @@ def emit_body(
                 and orig_arg
                 and isinstance(orig_arg.type, ListType)
             ):
+                print(f"{f.func.name.name.base = }, {name = }, {orig_arg.type = }")
                 expr = expr + "[i]"
             guard = guard_for(arg)
+            if name == "min" and is_foreach_op and orig_arg is not None:
+                print(f"{name = }, {expr = }, {f.func.name = }, {type = }, {orig_arg.type = }, {f.func.arguments = }")
             if guard is None:
                 if stmts_prepend:
                     stmts.append(f"{stmts_prepend};")
@@ -1697,24 +1702,24 @@ def emit_body(
                     if inplace and inp.name == "self"
                     else "_efficientzerotensor"
                 )
-                if inp.name in derivative.required_inputs_fw_grad:
+                if inp.name in derivative.required_inputs_fw_grad and not is_foreach_op:
                     unpacked_arguments += (
                         FW_DERIVATIVE_DEFINED_GRAD_TEMPLATE.substitute(
                             inp=inp.name, zeros_fn=zeros_fn
                         )
                     )
-                if inp.name in (derivative.required_inputs_primal or []):
+                if inp.name in (derivative.required_inputs_primal or []) and not is_foreach_op:
                     unpacked_arguments += (
                         FW_DERIVATIVE_DEFINED_PRIMAL_TEMPLATE.substitute(inp=inp.name)
                     )
-            if derivative.required_original_self_value:
+            if derivative.required_original_self_value and not is_foreach_op:
                 unpacked_arguments += FW_DERIVATIVE_DEFINED_GRAD_TEMPLATE.substitute(
                     inp="original_self", zeros_fn=zeros_fn
                 )
                 unpacked_arguments += FW_DERIVATIVE_DEFINED_PRIMAL_TEMPLATE.substitute(
                     inp="original_self"
                 )
-            elif inplace and derivative.is_reusing_outplace_formula:
+            elif inplace and derivative.is_reusing_outplace_formula and not is_foreach_op:
                 # The gradient wasn't already cloned, do it if grad mode is enabled
                 unpacked_arguments += (
                     "self_t = GradMode::is_enabled() ? self_t.clone() : self_t;"
@@ -1734,12 +1739,16 @@ def emit_body(
                 # Is there a way to get from BaseType to BaseCType
                 if len(derivative.var_types) == 1:
                     opt_res_grad_type = OptionalCType(BaseCType(tensorT)).cpp_type()
-                    fw_grad_setters.append(
-                        FW_DERIVATIVE_SETTER_TENSOR.substitute(
-                            out_arg=res[0], is_inplace=is_inplace_str
+                    if not is_foreach_op:
+                        fw_grad_setters.append(
+                            FW_DERIVATIVE_SETTER_TENSOR.substitute(
+                                out_arg=res[0], is_inplace=is_inplace_str
+                            )
                         )
-                    )
-                    requires_fw_grad += f" && ({derivative.var_names[0]}.defined())"
+                    value = f"({derivative.var_names[0]}.defined())"
+                    if is_foreach_op:
+                        value = "false /* foreach functions do not support forward AD */"
+                    requires_fw_grad += f" && {value}"
                 else:
                     tuple_type = TupleCType(
                         [BaseCType(tensorT)] * len(derivative.var_types)
@@ -1774,15 +1783,16 @@ def emit_body(
             )
 
             # View ops create fw_grad that already is a view of the base's fw_grad so just use that
-            content.append(
-                FW_DERIVATIVE_TEMPLATE.substitute(
-                    fw_grad_opt_definition=fw_grad_opt_definition,
-                    requires_fw_grad=requires_fw_grad,
-                    formula=derivative.formula,
-                    out_arg="_".join(res),
-                    unpacked_arguments=unpacked_arguments,
+            if not is_foreach_op:
+                content.append(
+                    FW_DERIVATIVE_TEMPLATE.substitute(
+                        fw_grad_opt_definition=fw_grad_opt_definition,
+                        requires_fw_grad=requires_fw_grad,
+                        formula=derivative.formula,
+                        out_arg="_".join(res),
+                        unpacked_arguments=unpacked_arguments,
+                    )
                 )
-            )
 
         # Set all the grads at the end to avoid: https://github.com/pytorch/pytorch/issues/67367
         content.append("\n".join(fw_grad_setters))
@@ -1841,7 +1851,11 @@ def emit_body(
             else:
                 any_has_fw_grad = " || ".join(
                     [
-                        FW_DERIVATIVE_CHECK_TEMPLATE.substitute(req_inp=inp.name)
+                        (
+                            FW_DERIVATIVE_CHECK_TEMPLATE
+                            if is_tensor_type(inp.type)
+                            else FW_DERIVATIVE_TENSORLIST_CHECK_TEMPLATE
+                        ).substitute(req_inp=inp.name)
                         for inp in differentiable_inputs
                         if inp.name in derivative.required_inputs_fw_grad
                     ]
