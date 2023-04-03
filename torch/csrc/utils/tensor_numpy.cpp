@@ -457,6 +457,26 @@ at::Tensor tensor_from_cuda_array_interface(PyObject* obj) {
     }
   }
 
+  {
+    // note(crcrpar): Synchronize before calling `from_blob`, if `stream`
+    // exists. ref:
+    // https://numba.readthedocs.io/en/0.56.4/cuda/cuda_array_interface.html
+    PyObject* py_cuda_array_interface_version =
+        PyDict_GetItemString(cuda_dict, "version");
+    const auto cuda_array_interface_version =
+        PyLong_AsLong(py_cuda_array_interface_version);
+    if (cuda_array_interface_version > 2) {
+      PyObject* py_cuda_stream_ptr = PyDict_GetItemString(cuda_dict, "stream");
+      if (py_cuda_stream_ptr != Py_None) {
+        const auto cuda_stream_ptr = PyLong_AsVoidPtr(py_cuda_stream_ptr);
+        if (cuda_stream_ptr != nullptr) {
+          // TODO(crcrpar): call cudaStreamSynchronize or whatever w/o direct
+          // dependencies.
+        }
+      }
+    }
+  }
+
   Py_INCREF(obj);
   return at::from_blob(
       data_ptr,

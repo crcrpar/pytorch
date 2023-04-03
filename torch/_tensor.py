@@ -1065,7 +1065,21 @@ class Tensor(torch._C._TensorBase):
         data_ptr = self.data_ptr() if self.numel() > 0 else 0
         data = (data_ptr, False)  # read-only is false
 
-        return dict(typestr=typestr, shape=shape, strides=strides, data=data, version=2)
+        stream_ptr: Optional[int] = torch.cuda.current_stream().cuda_stream
+        # Fall back to pre v3 behavior where the "stream" key didn't exist.
+        # ref: https://numba.readthedocs.io/en/0.56.4/cuda/cuda_array_interface.html
+        if stream_ptr == 0:
+            stream_ptr = torch.cuda.default_stream().cuda_stream
+            if stream_ptr == 0:
+                stream_ptr = None
+        return dict(
+            typestr=typestr,
+            shape=shape,
+            strides=strides,
+            data=data,
+            version=3,
+            stream=stream_ptr,
+        )
 
     def storage_type(self):
         r"""storage_type() -> type
