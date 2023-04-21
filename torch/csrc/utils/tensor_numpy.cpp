@@ -470,8 +470,10 @@ at::Tensor tensor_from_cuda_array_interface(PyObject* obj) {
       if (py_cuda_stream_ptr != Py_None) {
         const auto cuda_stream_ptr = PyLong_AsVoidPtr(py_cuda_stream_ptr);
         if (cuda_stream_ptr != nullptr) {
-          // TODO(crcrpar): call cudaStreamSynchronize or whatever w/o direct
-          // dependencies.
+          // This doesn't have to be this way considering this file is
+          // not specific to CUDA (hint: this is in c10/cuda/CUDAFunctions)
+          c10::cuda::stream_synchronize(
+              *reinterpret_cast<cudaStream_t*>(cuda_stream_ptr));
         }
       }
     }
