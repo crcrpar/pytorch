@@ -36,15 +36,6 @@ class Adam(Optimizer):
             if differentiable:
                 raise RuntimeError("`fused` does not support `differentiable`")
             self._step_supports_amp_scaling = True
-            # TODO(crcrpar): [low prec params & their higher prec copy]
-            # Suppor AMP with FP16/BF16 model params which would need
-            # higher prec copy of params to do update math in higher prec to
-            # alleviate the loss of information.
-            if not all(
-                p.is_cuda and torch.is_floating_point(p)
-                for pg in self.param_groups for p in pg['params']
-            ):
-                raise RuntimeError("`fused=True` requires all the params to be CUDA, floating point Tensor")
             if foreach:
                 raise RuntimeError("`fused` and `foreach` cannot be `True` together.")
 
@@ -424,9 +415,16 @@ def _multi_tensor_adam(params: List[Tensor],
 
     assert not differentiable, "_foreach ops don't support autograd"
 
-    grouped_tensors = _group_tensors_by_device_and_dtype([params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs, state_steps])
-    for (device_params, device_grads, device_exp_avgs, device_exp_avg_sqs,
-         device_max_exp_avg_sqs, device_state_steps) in grouped_tensors.values():
+    grouped_tensors = _group_tensors_by_device_and_dtype(
+        [params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs, state_steps])
+    for ((
+        device_params,
+        device_grads,
+        device_exp_avgs,
+        device_exp_avg_sqs,
+        device_max_exp_avg_sqs,
+        device_state_steps,
+    ), _) in grouped_tensors.values():
 
         if maximize:
             device_grads = torch._foreach_neg(tuple(device_grads))  # type: ignore[assignment]
@@ -534,14 +532,14 @@ def _fused_adam(
     found_inf_dict = {found_inf.device: found_inf} if found_inf is not None else None
     grouped_tensors = _group_tensors_by_device_and_dtype([params, grads, exp_avgs, exp_avg_sqs, max_exp_avg_sqs, state_steps])
     for (device, dtype) in grouped_tensors:
-        (
+        ((
             device_params,
             device_grads,
             device_exp_avgs,
             device_exp_avg_sqs,
             device_max_exp_avg_sqs,
             device_state_steps,
-        ) = grouped_tensors[(device, dtype)]
+        ), _) = grouped_tensors[(device, dtype)]
         device_grad_scale, device_found_inf = None, None
         if grad_scale is not None:
             if device not in grad_scale_dict:
