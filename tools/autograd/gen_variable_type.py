@@ -1716,8 +1716,7 @@ def emit_body(
                 assert len(info.output_differentiability_conditions) == 1
                 requires_fw_grad = f"({info.output_differentiability_conditions[0]}) && {requires_fw_grad}"
             content.append(
-                f"auto {get_any_has_forward_grad_name(derivative.var_names)} = {requires_fw_grad};\n"
-                f"(void){get_any_has_forward_grad_name(derivative.var_names)};"
+                f"[[maybe_unused]] auto {get_any_has_forward_grad_name(derivative.var_names)} = {requires_fw_grad};\n"
             )
         return content
 
@@ -1897,12 +1896,16 @@ def emit_body(
             else:
                 any_has_fw_grad = " || ".join(
                     [
-                        FW_DERIVATIVE_CHECK_TEMPLATE.substitute(req_inp=inp.name)
+                        (
+                            FW_DERIVATIVE_CHECK_TEMPLATE
+                            if is_tensor_type(inp.type) else FW_DERIVATIVE_TENSORLIST_CHECK_TEMPLATE).substitute(req_inp=inp.name)
                         for inp in differentiable_inputs
                         if inp.name in derivative.required_inputs_fw_grad
                     ]
                 )
                 any_has_fw_grad = f"({any_has_fw_grad})"
+                if f.func.name.name.base.startswith("_foreach_"):
+                    print(f" {f.func.name.name.base}.{f.func.name.overload_name} {[inp.type for inp in differentiable_inputs if inp in derivative.required_inputs_fw_grad]}, {any_has_fw_grad = }")
 
             return any_has_fw_grad
 

@@ -7,6 +7,8 @@ from torchgen import local
 from torchgen.api import cpp
 from torchgen.api.types import BaseCType, Binding, NamedCType, tensorListT
 from torchgen.model import (
+    BaseTy,
+    BaseType,
     FunctionSchema,
     ListType,
     NativeFunction,
@@ -451,6 +453,38 @@ def gen_foreach_derivativeinfo(
             for arg in foreach_function.func.arguments.flat_non_out
             if arg.name in all_var_names
         ]
+
+    modified_forward_derivatives: Sequence[ForwardDerivative] = []
+    for derivative in ref_diff_info.forward_derivatives:
+        formula: str = derivative.formula
+        var_names: List[str] = list(derivative.var_names)
+        var_types: List[Type] = list(derivative.var_types)
+        for i, ref_name in enumerate(var_names):
+            ref_jit_name = ref_name.split(".")[0]
+            if ref_jit_name in map_refarg2foreacharg:
+                mapped_name = map_refarg2foreacharg[ref_jit_name]
+                var_names[i] = mapped_name
+                var_types[i] = map_name2arg[mapped_name].type
+                formula = formula.replace(ref_jit_name, mapped_name)
+            elif ref_jit_name == "result":
+                var_types[i] = ListType(BaseType(BaseTy.Tensor), None)
+        modified_forward_derivatives.append(ForwardDerivative(
+            formula=formula,
+            var_names=tuple(var_names),
+            var_types=tuple(var_types),
+            required_inputs_fw_grad=derivative.required_inputs_fw_grad,
+            required_inputs_primal=derivative.required_inputs_primal,
+            required_original_self_value=derivative.required_original_self_value,
+            is_reusing_outplace_formula=derivative.is_reusing_outplace_formula,
+        ))
+
+    print(
+        f"# name: {foreach_function.func.name.name.base}.{foreach_function.func.name.overload_name}"
+        f"\n  {[d.formula for d in modified_forward_derivatives] = }"
+        f"\n  {[d.var_names for d in modified_forward_derivatives] = }"
+        f"\n  {[d.var_types for d in modified_forward_derivatives] = }"
+        f"\n  {[d.required_inputs_fw_grad for d in modified_forward_derivatives] = }"
+    )
     return (
         DifferentiabilityInfo(
             name=foreach_function.func.name.name.base,
@@ -459,7 +493,7 @@ def gen_foreach_derivativeinfo(
                 ref_diff_info.op, foreach_function.func.name.overload_name
             ),
             derivatives=modified_derivative_formulas,
-            forward_derivatives=[],
+            forward_derivatives=modified_forward_derivatives,
             all_saved_inputs=tuple(set(all_saved_inputs)),
             all_saved_outputs=tuple(set(all_saved_outputs)),
             available_named_gradients=(),
