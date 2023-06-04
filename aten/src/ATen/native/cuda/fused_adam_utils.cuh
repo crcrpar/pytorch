@@ -109,7 +109,6 @@ struct FusedAdamMathFunctor {
     static_assert(depth == 4 || depth == 5, "depth of 4 for Adam, depth of 5 for Adam with AMSGrad.");
     using opmath_t = at::opmath_type<scalar_type>;
     C10_DEVICE __forceinline__ void operator()(
-            int,
             FusedOptimizerTensorListMetadata<depth>& tl,
             const double lr,
             const double beta1,

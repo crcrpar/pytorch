@@ -103,7 +103,7 @@ __global__ void multi_tensor_apply_kernel(
     ArgTypes... args) {
   // Hand the chunk information to the user-supplied functor to process however
   // it likes.
-  callable(kChunkSize, tensorListMeta, args...);
+  callable(tensorListMeta, args...);
 }
 
 } // namespace
