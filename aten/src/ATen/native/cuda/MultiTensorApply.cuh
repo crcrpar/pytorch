@@ -100,16 +100,20 @@ struct FusedOptimizerTensorListMetadata {
   int start_tensor_this_launch;
 };
 
-template <typename T, typename U, typename... ArgTypes>
+template <typename T, typename U, typename index_t, typename... ArgTypes>
 C10_LAUNCH_BOUNDS_1(kBlockSize)
 __global__ void multi_tensor_apply_kernel(
     T tensorListMeta,
     U callable,
+    const index_t arg_to_propagate_index_t,
     ArgTypes... args) {
   // Hand the chunk information to the user-supplied functor to process however
   // it likes.
-  callable(tensorListMeta, args...);
+  callable(arg_to_propagate_index_t, tensorListMeta, args...);
 }
+
+constexpr int32_t int32_t_v{0};
+constexpr int64_t int64_t_v{0};
 
 } // namespace
 
@@ -182,14 +186,14 @@ void multi_tensor_apply(
               kBlockSize,
               0,
               at::cuda::getCurrentCUDAStream()>>>(
-              tensorListMeta, callable, args...);
+              tensorListMeta, callable, int32_t_v, args...);
         } else {
           multi_tensor_apply_kernel<<<
               loc_block_info,
               kBlockSize,
               0,
               at::cuda::getCurrentCUDAStream()>>>(
-              tensorListMeta, callable, args...);
+              tensorListMeta, callable, int64_t_v, args...);
         }
         C10_CUDA_KERNEL_LAUNCH_CHECK();
 
@@ -276,14 +280,14 @@ void multi_tensor_apply(
               kBlockSize,
               0,
               at::cuda::getCurrentCUDAStream()>>>(
-              tensorListMeta, callable, args...);
+              tensorListMeta, callable, int32_t_v, args...);
         } else {
           multi_tensor_apply_kernel<<<
               loc_block_info,
               kBlockSize,
               0,
               at::cuda::getCurrentCUDAStream()>>>(
-              tensorListMeta, callable, args...);
+              tensorListMeta, callable, int64_t_v, args...);
         }
         C10_CUDA_KERNEL_LAUNCH_CHECK();
 
@@ -374,14 +378,14 @@ void multi_tensor_apply_for_fused_optimizer(
               kBlockSize,
               0,
               at::cuda::getCurrentCUDAStream()>>>(
-              tensorListMeta, callable, args...);
+              tensorListMeta, callable, int32_t_v, args...);
         } else {
           multi_tensor_apply_kernel<<<
               loc_block_info,
               kBlockSize,
               0,
               at::cuda::getCurrentCUDAStream()>>>(
-              tensorListMeta, callable, args...);
+              tensorListMeta, callable, int64_t_v, args...);
         }
         C10_CUDA_KERNEL_LAUNCH_CHECK();
 

@@ -31,7 +31,9 @@ struct LpNormFunctor {
       NormType == 1 || NormType == 2,
       "foreach_norm supports only L1 and L2 norm");
   using opmath_t = typename at::opmath_type<T>;
+  template <typename index_t>
   __device__ __forceinline__ void operator()(
+      const index_t,
       TensorListMetadata<depth>& tl,
       opmath_t* output_per_tensor,
       const int max_chunks_per_tensor) {
