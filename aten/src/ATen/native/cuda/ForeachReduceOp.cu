@@ -32,7 +32,7 @@ struct LpNormFunctor {
       "foreach_norm supports only L1 and L2 norm");
   using opmath_t = typename at::opmath_type<T>;
   __device__ __forceinline__ void operator()(
-      int chunk_size,
+      int,
       TensorListMetadata<depth>& tl,
       opmath_t* output_per_tensor,
       const int max_chunks_per_tensor) {
@@ -41,8 +41,8 @@ struct LpNormFunctor {
     auto n = tl.numel_for_tensor[tensor_loc];
 
     T* x = (T*)tl.addresses[0][tensor_loc];
-    x += chunk_idx * chunk_size;
-    n -= chunk_idx * chunk_size;
+    x += chunk_idx * kChunkSize;
+    n -= chunk_idx * kChunkSize;
 
     __shared__ opmath_t s_vals[512];
     opmath_t vals[kILP];
@@ -52,9 +52,9 @@ struct LpNormFunctor {
       r_x[i] = T(0);
     }
 
-    if (n % kILP == 0 && (chunk_size & kILP) == 0 && is_aligned(x)) {
+    if (n % kILP == 0 && (kChunkSize & kILP) == 0 && is_aligned(x)) {
       for (int64_t i_start = threadIdx.x;
-           i_start * kILP < n && i_start * kILP < chunk_size;
+           i_start * kILP < n && i_start * kILP < kChunkSize;
            i_start += blockDim.x) {
         // load
         load_store(r_x, x, 0, i_start);
@@ -65,12 +65,12 @@ struct LpNormFunctor {
         }
       }
     } else {
-      for (int64_t i_start = 0; i_start < n && i_start < chunk_size;
+      for (int64_t i_start = 0; i_start < n && i_start < kChunkSize;
            i_start += blockDim.x * kILP) {
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           int i = i_start + threadIdx.x + ii * blockDim.x;
-          if (i < n && i < chunk_size) {
+          if (i < n && i < kChunkSize) {
             opmath_t next = static_cast<opmath_t>(x[i]);
             vals[ii] += NormType == 1 ? ::abs(next) : next * next;
           }

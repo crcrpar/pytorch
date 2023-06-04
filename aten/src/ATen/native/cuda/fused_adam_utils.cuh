@@ -109,7 +109,7 @@ struct FusedAdamMathFunctor {
     static_assert(depth == 4 || depth == 5, "depth of 4 for Adam, depth of 5 for Adam with AMSGrad.");
     using opmath_t = at::opmath_type<scalar_type>;
     C10_DEVICE __forceinline__ void operator()(
-            int chunk_size,
+            int,
             FusedOptimizerTensorListMetadata<depth>& tl,
             const double lr,
             const double beta1,
@@ -132,12 +132,12 @@ struct FusedAdamMathFunctor {
         auto *step_count = reinterpret_cast<const float*>(tl.state_steps_addresses[tensor_loc]);
 
         scalar_type* args[depth];
-        const bool all_aligned{init_args<depth>(args, tl, chunk_idx, chunk_size, tensor_loc)};
-        n -= chunk_idx * chunk_size;
+        const bool all_aligned{init_args<depth>(args, tl, chunk_idx, kChunkSize, tensor_loc)};
+        n -= chunk_idx * kChunkSize;
         scalar_type r_args[depth][kILP];
 
-        if ((n % kILP == 0) && (chunk_size % kILP == 0) && all_aligned) {
-            for (int64_t i_start = threadIdx.x; i_start * kILP < n && i_start * kILP < chunk_size; i_start += blockDim.x) {
+        if ((n % kILP == 0) && (kChunkSize % kILP == 0) && all_aligned) {
+            for (int64_t i_start = threadIdx.x; i_start * kILP < n && i_start * kILP < kChunkSize; i_start += blockDim.x) {
 #pragma unroll
                 for (int i = 0; i < depth; i++) {
                     load_store(r_args[i], args[i], 0, i_start);
@@ -152,14 +152,14 @@ struct FusedAdamMathFunctor {
                 }
             }
         } else {
-            for (int64_t i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * kILP) {
-              load_args<depth>(r_args, args, i_start, chunk_size, n);
+            for (int64_t i_start = 0; i_start < n && i_start < kChunkSize; i_start += blockDim.x * kILP) {
+              load_args<depth>(r_args, args, i_start, kChunkSize, n);
               adam_math<scalar_type, opmath_t, depth>(
                   r_args, step_count, lr, beta1, beta2, weight_decay, eps, maximize, amsgrad, grad_scale_ptr, found_inf_ptr, adam_mode);
 #pragma unroll
               for (int i = 0; i < depth; i++) {
                   if (i != kGradIdx || grad_scale_ptr) {
-                    store_args(args[i], r_args[i], i_start, chunk_size, n);
+                    store_args(args[i], r_args[i], i_start, kChunkSize, n);
                   }
               }
             }

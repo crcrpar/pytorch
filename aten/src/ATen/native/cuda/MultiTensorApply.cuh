@@ -10,9 +10,9 @@ namespace at::native {
 
 namespace {
 
-static constexpr int64_t kILP = 4;
-static constexpr int64_t kChunkSize = 65536;
-static constexpr int64_t kBlockSize = 512;
+static constexpr int kILP = 4;
+static constexpr int kChunkSize = 65536;
+static constexpr int kBlockSize = 512;
 
 // TODO(crcrpar): Add `n>5` for `low prec params & their higher prec copy`
 // TensorListMetadata has to be < 4KB - the limit for kernel launch argument
