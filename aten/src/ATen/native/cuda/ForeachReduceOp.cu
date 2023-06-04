@@ -58,7 +58,7 @@ struct LpNormFunctor {
            i_start * kILP < n && i_start * kILP < kChunkSize;
            i_start += blockDim.x) {
         // load
-        load_store(r_x, x, 0, i_start);
+        load_store(r_x, x, index_t(0), i_start);
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
