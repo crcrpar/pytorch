@@ -54,7 +54,7 @@ struct LpNormFunctor {
     }
 
     if (n % kILP == 0 && (kChunkSize & kILP) == 0 && is_aligned(x)) {
-      for (int64_t i_start = threadIdx.x;
+      for (index_t i_start = threadIdx.x;
            i_start * kILP < n && i_start * kILP < kChunkSize;
            i_start += blockDim.x) {
         // load
@@ -66,7 +66,7 @@ struct LpNormFunctor {
         }
       }
     } else {
-      for (int64_t i_start = 0; i_start < n && i_start < kChunkSize;
+      for (index_t i_start = 0; i_start < n && i_start < kChunkSize;
            i_start += blockDim.x * kILP) {
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
