@@ -125,7 +125,7 @@ struct FusedAdamMathFunctor {
             const ADAM_MODE adam_mode
   ) {
         const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-        const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+        const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
         index_t n = tl.numel_for_tensor[tensor_loc];
 
         if (found_inf_ptr && *found_inf_ptr == 1) {

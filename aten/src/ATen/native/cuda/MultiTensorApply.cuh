@@ -167,6 +167,7 @@ void multi_tensor_apply(
                                          .numel() +
                          kChunkSize - 1) /
         kChunkSize;
+    TORCH_CHECK(can_use_32bit_indexing(chunks));
     for (auto chunk = 0; chunk < chunks; chunk++) {
       tensorListMeta.block_to_tensor[loc_block_info] = loc_tensor_info - 1;
       tensorListMeta.block_to_chunk[loc_block_info] = chunk;
@@ -261,6 +262,7 @@ void multi_tensor_apply(
                                          .numel() +
                          kChunkSize - 1) /
         kChunkSize;
+    TORCH_CHECK(can_use_32bit_indexing(chunks));
     for (auto chunk = 0; chunk < chunks; chunk++) {
       tensorListMeta.block_to_tensor[loc_block_info] = loc_tensor_info - 1;
       tensorListMeta.block_to_chunk[loc_block_info] = chunk;
@@ -349,7 +351,7 @@ void multi_tensor_apply_for_fused_optimizer(
     if (static_cast<decltype(num_tensors)>(num_zero_tensors) == num_tensors) {
       continue;
     }
-    const int64_t chunks =
+    const auto chunks =
         (tensor_lists[0]
                      [tensor_index -
                       static_cast<decltype(tensor_index)>(
@@ -358,6 +360,7 @@ void multi_tensor_apply_for_fused_optimizer(
                          .numel() +
          kChunkSize - 1) /
         kChunkSize;
+    TORCH_CHECK(can_use_32bit_indexing(chunks));
     TORCH_CHECK(chunks > -1);
     for (const auto& chunk : c10::irange(chunks)) {
       tensorListMeta.block_to_tensor[loc_block_info] = loc_tensor_info - 1;

@@ -286,7 +286,7 @@ struct BinaryOpListAlphaFunctor {
       Op op,
       opmath_t alpha) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
@@ -346,7 +346,7 @@ struct ZeroFunctor {
       const index_t arg_of_index_t,
       TensorListMetadata<1>& tl) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
@@ -391,7 +391,7 @@ struct UnaryOpFunctor {
       TensorListMetadata<depth>& tl,
       Op op) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
@@ -450,7 +450,7 @@ struct PointwiseOpScalarFunctor {
       Op op,
       opmath_t scalar) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
@@ -474,7 +474,7 @@ struct PointwiseOpScalarListFunctor {
       TensorListScalarListMetadata<opmath_t, depth>& tl,
       Op op) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
@@ -499,7 +499,7 @@ struct PointwiseOpListFunctor {
       TensorListMetadata<depth>& tl,
       Op op) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
@@ -556,7 +556,7 @@ struct TernaryOpListFunctor {
     static_assert(depth >= r_args_depth, "");
     static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
@@ -619,7 +619,7 @@ struct TernaryOpScalarFunctor {
     static_assert(depth >= r_args_depth, "");
     static_assert(res_arg_index == depth - 1 || res_arg_index == 0, "");
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
-    const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
+    const index_t chunk_idx = tl.block_to_chunk[blockIdx.x];
     index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* args[depth];
