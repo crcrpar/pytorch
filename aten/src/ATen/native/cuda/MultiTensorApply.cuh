@@ -261,7 +261,6 @@ void multi_tensor_apply_for_fused_optimizer(
       continue;
     }
     const int64_t chunks = (tensor_lists[0][tensor_index - static_cast<decltype(tensor_index)>((tensor_index == num_tensors - 1) && (tensor_lists[0][tensor_index].numel() == 0))].numel() + kChunkSize - 1) / kChunkSize;
-    TORCH_CHECK(chunks > -1);
     for (const auto & chunk : c10::irange(chunks)) {
       tensorListMeta.block_to_tensor[loc_block_info] = loc_tensor_info - 1;
       tensorListMeta.block_to_chunk[loc_block_info] = chunk;

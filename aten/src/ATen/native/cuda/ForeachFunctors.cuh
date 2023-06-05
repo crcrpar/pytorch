@@ -22,8 +22,8 @@ __device__ bool init_args(
     T** args,
     TensorListMetadata<depth>& tl,
     const int64_t chunk_idx,
-    const int64_t chunk_size,
-    const int64_t tensor_loc) {
+    const int chunk_size,
+    const int tensor_loc) {
         bool all_aligned = true;
         for (int i = 0; i < depth; i++) {
             args[i] =  (T*)tl.addresses[i][tensor_loc];
@@ -42,8 +42,8 @@ __device__ bool init_args(
     T** args,
     TensorListScalarListMetadata<T2, depth>& tl,
     const int64_t chunk_idx,
-    const int64_t chunk_size,
-    const int64_t tensor_loc) {
+    const int chunk_size,
+    const int tensor_loc) {
         bool all_aligned = true;
         for (int i = 0; i < depth; i++) {
             args[i] =  (T*)tl.addresses[i][tensor_loc];
@@ -61,8 +61,8 @@ __device__ bool init_args(
     T** args,
     FusedOptimizerTensorListMetadata<depth>& tl,
     const int64_t chunk_idx,
-    const int64_t chunk_size,
-    const int64_t tensor_loc) {
+    const int chunk_size,
+    const int tensor_loc) {
         bool all_aligned = true;
         for (int i = 0; i < depth; i++) {
             args[i] =  (T*)tl.addresses[i][tensor_loc];
@@ -76,7 +76,7 @@ __device__ bool init_args(
 }
 
 template<int depth, typename T>
-__device__ void load_args(T r_args[][kILP], T** args, const int64_t i_start, const int64_t chunk_size, const int64_t n) {
+__device__ void load_args(T r_args[][kILP], T** args, const int64_t i_start, const int chunk_size, const int64_t n) {
 #pragma unroll
     for(int ii = 0; ii < kILP; ii++) {
         const auto i = i_start + threadIdx.x + ii * blockDim.x;
@@ -90,7 +90,7 @@ __device__ void load_args(T r_args[][kILP], T** args, const int64_t i_start, con
 }
 
 template<typename T>
-__device__ void store_args(T* dst, T* src, const int64_t i_start, const int64_t chunk_size, const int64_t n) {
+__device__ void store_args(T* dst, T* src, const int64_t i_start, const int chunk_size, const int64_t n) {
 #pragma unroll
     for(int ii = 0; ii < kILP; ii++) {
         const int64_t i = i_start + threadIdx.x + ii * blockDim.x;
@@ -105,7 +105,7 @@ __device__ __forceinline__ void binary_op_scalar(
     T** args,
     opmath_t scalar,
     const int64_t n,
-    const int64_t chunk_size,
+    const int chunk_size,
     const bool all_aligned,
     Op op) {
         // to make things simple, we put aligned case in a different code path
@@ -142,7 +142,7 @@ __device__ __forceinline__ void pointwise_op_scalar(
     T** args,
     opmath_t scalar,
     const int64_t n,
-    const int64_t chunk_size,
+    const int chunk_size,
     const bool all_aligned,
     Op op) {
         // to make things simple, we put aligned case in a different code path
@@ -188,8 +188,8 @@ struct BinaryOpScalarFunctor {
         TensorListMetadata<depth>& tl,
         Op op,
         opmath_t scalar) {
-            const int tensor_loc = tl.block_to_tensor[blockIdx.x];
-            const int chunk_idx = tl.block_to_chunk[blockIdx.x];
+            const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
+            const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
             auto n = tl.numel_for_tensor[tensor_loc];
 
             T* args[depth];
