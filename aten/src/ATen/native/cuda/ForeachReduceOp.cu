@@ -35,7 +35,7 @@ struct LpNormFunctor {
   ) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
     const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
-    auto n = tl.numel_for_tensor[tensor_loc];
+    index_t n = tl.numel_for_tensor[tensor_loc];
 
     T* x = (T*)tl.addresses[0][tensor_loc];
     x += chunk_idx * chunk_size;
@@ -50,9 +50,9 @@ struct LpNormFunctor {
     }
 
     if (n % kILP == 0 && (chunk_size & kILP) == 0 && is_aligned(x)) {
-      for (int64_t i_start = threadIdx.x; i_start * kILP < n && i_start * kILP < chunk_size; i_start += blockDim.x) {
+      for (index_t i_start = threadIdx.x; i_start * kILP < n && i_start * kILP < chunk_size; i_start += blockDim.x) {
         // load
-        load_store(r_x, x, 0, i_start);
+        load_store(r_x, x, index_t(0), i_start);
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
@@ -60,7 +60,7 @@ struct LpNormFunctor {
         }
       }
     } else {
-      for (int64_t i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * kILP) {
+      for (index_t i_start = 0; i_start < n && i_start < chunk_size; i_start += blockDim.x * kILP) {
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           int i = i_start + threadIdx.x + ii * blockDim.x;

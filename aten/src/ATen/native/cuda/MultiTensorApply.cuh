@@ -27,8 +27,8 @@ __device__ __forceinline__ bool is_aligned(T* p){
   return ((uint64_t)p) % (kILP * sizeof(T)) == 0;
 }
 
-template<typename T>
-__device__ __forceinline__ void load_store(T* dst, T* src, int64_t dst_offset, int64_t src_offset){
+template<typename T, typename index_t>
+__device__ __forceinline__ void load_store(T* dst, T* src, const index_t dst_offset, const index_t src_offset){
   using LT = at::native::memory::aligned_vector<T, kILP>;
   ((LT*)dst)[dst_offset] = ((LT*)src)[src_offset];
 }
