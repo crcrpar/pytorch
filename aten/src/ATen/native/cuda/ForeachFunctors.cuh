@@ -183,8 +183,9 @@ __device__ __forceinline__ void pointwise_op_scalar(
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct BinaryOpScalarFunctor {
     using opmath_t = at::opmath_type<T>;
-    template<typename Op> __device__ __forceinline__ void operator() (
+    template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholder,
         TensorListMetadata<depth>& tl,
         Op op,
         opmath_t scalar) {
@@ -204,8 +205,9 @@ struct BinaryOpScalarFunctor {
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct BinaryOpScalarListFunctor {
     using opmath_t = at::opmath_type<T>;
-    template<typename Op> __device__ __forceinline__ void operator() (
+    template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholder,
         TensorListScalarListMetadata<opmath_t, depth>& tl,
         Op op) {
             const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
@@ -225,8 +227,9 @@ struct BinaryOpScalarListFunctor {
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct BinaryOpListAlphaFunctor {
     using opmath_t = at::opmath_type<T>;
-    template<typename Op> __device__ __forceinline__ void operator() (
+    template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholder,
         TensorListMetadata<depth>& tl,
         Op op,
         opmath_t alpha) {
@@ -274,8 +277,10 @@ struct BinaryOpListAlphaFunctor {
 
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct ZeroFunctor {
+    template <typename index_t>
     __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholder,
         TensorListMetadata<1>& tl) {
             const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
             const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
@@ -312,8 +317,9 @@ struct ZeroFunctor {
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct UnaryOpFunctor {
     using opmath_t = at::opmath_type<T>;
-    template<typename Op> __device__ __forceinline__ void operator() (
+    template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholder,
         TensorListMetadata<depth>& tl,
         Op op) {
             const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
@@ -358,8 +364,9 @@ struct UnaryOpFunctor {
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct PointwiseOpScalarFunctor {
     using opmath_t = at::opmath_type<T>;
-    template<typename Op> __device__ __forceinline__ void operator() (
+    template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholoder,
         TensorListMetadata<depth>& tl,
         Op op,
         opmath_t scalar) {
@@ -379,8 +386,9 @@ struct PointwiseOpScalarFunctor {
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct PointwiseOpScalarListFunctor {
     using opmath_t = at::opmath_type<T>;
-    template<typename Op> __device__ __forceinline__ void operator() (
+    template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholder,
         TensorListScalarListMetadata<opmath_t, depth>& tl,
         Op op) {
             const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
@@ -400,8 +408,9 @@ struct PointwiseOpScalarListFunctor {
 template<typename T, int depth>
 struct PointwiseOpListFunctor {
     using opmath_t = at::opmath_type<T>;
-    template<typename Op> __device__ __forceinline__ void operator() (
+    template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
         int chunk_size,
+        const index_t index_t_placeholder,
         TensorListMetadata<depth>& tl,
         Op op) {
             const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
@@ -445,8 +454,9 @@ struct PointwiseOpListFunctor {
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct TernaryOpListFunctor {
   using opmath_t = at::opmath_type<T>;
-  template<typename Op> __device__ __forceinline__ void operator() (
+  template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
       int chunk_size,
+      const index_t index_t_placeholder,
       TensorListMetadata<depth>& tl,
       Op op) {
     static_assert(depth == 3 || depth == 4, "");
@@ -496,8 +506,9 @@ struct TernaryOpListFunctor {
 template<typename T, int depth, int r_args_depth, int res_arg_index>
 struct TernaryOpScalarFunctor {
   using opmath_t = at::opmath_type<T>;
-  template<typename Op> __device__ __forceinline__ void operator() (
+  template<typename Op, typename index_t> __device__ __forceinline__ void operator() (
       int chunk_size,
+      const index_t index_t_placeholoder,
       TensorListMetadata<depth>& tl,
       Op op,
       opmath_t alpha) {

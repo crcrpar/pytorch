@@ -108,8 +108,10 @@ template <typename scalar_type, int depth=4>
 struct FusedAdamMathFunctor {
     static_assert(depth == 4 || depth == 5, "depth of 4 for Adam, depth of 5 for Adam with AMSGrad.");
     using opmath_t = at::opmath_type<scalar_type>;
+    template <typename index_t>
     C10_DEVICE __forceinline__ void operator()(
             int chunk_size,
+            const index_t index_t_placeholder,
             FusedOptimizerTensorListMetadata<depth>& tl,
             const double lr,
             const double beta1,

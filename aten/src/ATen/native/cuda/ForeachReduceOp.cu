@@ -25,8 +25,10 @@ template<typename T, int NormType, int depth=1, int r_args_depth=1, int res_arg_
 struct LpNormFunctor {
   static_assert(NormType == 1 || NormType == 2, "foreach_norm supports only L1 and L2 norm");
   using opmath_t = typename at::opmath_type<T>;
+  template <typename index_t>
   __device__ __forceinline__ void operator() (
       int chunk_size,
+      const index_t index_t_placeholder,
       TensorListMetadata<depth>& tl,
       opmath_t* output_per_tensor,
       const int max_chunks_per_tensor

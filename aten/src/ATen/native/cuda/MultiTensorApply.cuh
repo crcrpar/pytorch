@@ -93,7 +93,7 @@ multi_tensor_apply_kernel(
     const index_t index_t_placeholder,
     ArgTypes... args) {
   // Hand the chunk information to the user-supplied functor to process however it likes.
-  callable(kChunkSize, tensorListMeta, args...);
+  callable(kChunkSize, index_t_placeholder, tensorListMeta, args...);
 }
 
 } // namespace
