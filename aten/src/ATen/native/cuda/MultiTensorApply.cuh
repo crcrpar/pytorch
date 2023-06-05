@@ -4,6 +4,7 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <ATen/native/cuda/Loops.cuh>
 #include <ATen/native/cuda/MemoryAccess.cuh>
+#include <limits>
 #include <vector>
 
 namespace at { namespace native {
@@ -31,6 +32,13 @@ __device__ __forceinline__ void load_store(T* dst, T* src, int64_t dst_offset, i
   using LT = at::native::memory::aligned_vector<T, kILP>;
   ((LT*)dst)[dst_offset] = ((LT*)src)[src_offset];
 }
+
+inline bool can_use_32bit_indexing(const int64_t numel) {
+  return numel < static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+}
+
+constexpr int32_t int32_t_placeholder = 0;
+constexpr int64_t int64_t_placeholder = 0;
 
 template<int n> struct TensorListMetadata {
   const void* addresses[n][depth_to_max_tensors[n-1]];
@@ -76,12 +84,13 @@ template<int n> struct FusedOptimizerTensorListMetadata {
   int start_tensor_this_launch;
 };
 
-template<typename T, typename U, typename... ArgTypes>
+template<typename T, typename U, typename index_t, typename... ArgTypes>
 C10_LAUNCH_BOUNDS_1(kBlockSize)
 __global__ void
 multi_tensor_apply_kernel(
     T tensorListMeta,
     U callable,
+    const index_t index_t_placeholder,
     ArgTypes... args) {
   // Hand the chunk information to the user-supplied functor to process however it likes.
   callable(kChunkSize, tensorListMeta, args...);
@@ -107,6 +116,7 @@ void multi_tensor_apply(
 
         int loc_block_info = 0;
         int loc_tensor_info = 0;
+        int64_t sum_of_numel = 0;
         for(size_t t = 0; t < n_tensors; t++) {
             if (tensor_lists[0][t].numel() == 0) {
                 n_zero_tensors++;
@@ -116,6 +126,7 @@ void multi_tensor_apply(
             } else {
                 tensorListMeta.scalar_vals[loc_tensor_info] = scalars[t].to<scalar_T>();
                 tensorListMeta.numel_for_tensor[loc_tensor_info] = tensor_lists[0][t].numel();
+                sum_of_numel += tensor_lists[0][t].numel();
                 for (int d = 0; d < depth; d++) {
                     tensorListMeta.addresses[d][loc_tensor_info] = tensor_lists[d][t].const_data_ptr();
                 }
@@ -137,10 +148,19 @@ void multi_tensor_apply(
                 const bool last_chunk = (t == n_tensors - 1 && chunk == chunks - 1);
 
                 if (tensors_full || blocks_full || last_chunk) {
-                    multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
-                        tensorListMeta,
-                        callable,
-                        args...);
+                    if (can_use_32bit_indexing(sum_of_numel)) {
+                        multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
+                            tensorListMeta,
+                            callable,
+                            int32_t_placeholder,
+                            args...);
+                    } else {
+                        multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
+                            tensorListMeta,
+                            callable,
+                            int64_t_placeholder,
+                            args...);
+                    }
                     C10_CUDA_KERNEL_LAUNCH_CHECK();
 
                     // Reset.
@@ -175,6 +195,7 @@ void multi_tensor_apply(
 
         int loc_block_info = 0;
         int loc_tensor_info = 0;
+        int64_t sum_of_numel = 0;
         for(size_t t = 0; t < n_tensors; t++) {
             if (tensor_lists[0][t].numel() == 0) {
                 n_zero_tensors++;
@@ -183,6 +204,7 @@ void multi_tensor_apply(
                 }
             } else {
                 tensorListMeta.numel_for_tensor[loc_tensor_info] = tensor_lists[0][t].numel();
+                sum_of_numel += tensor_lists[0][t].numel();
                 for (int d = 0; d < depth; d++) {
                     tensorListMeta.addresses[d][loc_tensor_info] = tensor_lists[d][t].const_data_ptr();
                 }
@@ -204,10 +226,19 @@ void multi_tensor_apply(
                 const bool last_chunk = (t == n_tensors - 1 && chunk == chunks - 1);
 
                 if (tensors_full || blocks_full || last_chunk) {
-                    multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
-                        tensorListMeta,
-                        callable,
-                        args...);
+                    if (can_use_32bit_indexing(sum_of_numel)) {
+                        multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
+                            tensorListMeta,
+                            callable,
+                            int32_t_placeholder,
+                            args...);
+                    } else {
+                        multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
+                            tensorListMeta,
+                            callable,
+                            int64_t_placeholder,
+                            args...);
+                    }
                     C10_CUDA_KERNEL_LAUNCH_CHECK();
 
                     // Reset.
@@ -242,6 +273,7 @@ void multi_tensor_apply_for_fused_optimizer(
 
   int loc_block_info = 0;
   int loc_tensor_info = 0;
+  int sum_of_numel = 0;
   for (const auto & tensor_index : c10::irange(num_tensors)) {
     if (tensor_lists[0][tensor_index].numel() == 0) {
       num_zero_tensors++;
@@ -251,6 +283,7 @@ void multi_tensor_apply_for_fused_optimizer(
     } else {
       tensorListMeta.state_steps_addresses[loc_tensor_info] = state_steps[tensor_index].const_data_ptr();
       tensorListMeta.numel_for_tensor[loc_tensor_info] = tensor_lists[0][tensor_index].numel();
+      sum_of_numel += tensor_lists[0][tensor_index].numel();
       for (const auto & d : c10::irange(depth)) {
         tensorListMeta.addresses[d][loc_tensor_info] = tensor_lists[d][tensor_index].const_data_ptr();
       }
@@ -271,10 +304,19 @@ void multi_tensor_apply_for_fused_optimizer(
       const auto last_chunk = (tensor_index == num_tensors - 1 && chunk == chunks - 1);
 
       if (tensor_full || blocks_full || last_chunk) {
-        multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
-            tensorListMeta,
-            callable,
-            args...);
+        if (can_use_32bit_indexing(sum_of_numel)) {
+            multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
+                tensorListMeta,
+                callable,
+                int32_t_placeholder,
+                args...);
+        } else {
+            multi_tensor_apply_kernel<<<loc_block_info, kBlockSize, 0, at::cuda::getCurrentCUDAStream()>>>(
+                tensorListMeta,
+                callable,
+                int64_t_placeholder,
+                args...);
+        }
         C10_CUDA_KERNEL_LAUNCH_CHECK();
 
         // Reset.
