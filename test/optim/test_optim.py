@@ -817,10 +817,13 @@ class TestOptim(TestCase):
             # note(crcrpar): H100 wasn't sufficient for Adamax, surprisingly
             if optimizer_ctor == optim.Adamax:
                 continue
+            print(dict(optimizer=optimizer_ctor.__name__, params=optimizer_params))
             params = [torch.ones(2 ** 32, device="cuda", dtype=torch.float16)]
             params[0].grad = torch.zeros_like(params[0])
             optimizer = optimizer_ctor(params, foreach=True, **optimizer_params)
             optimizer.step()
+        else:
+            return True
 
     @property
     def _fused_optimizer_configs(self):

@@ -44,7 +44,7 @@ struct TensorListMetadata {
   const void* addresses[n][depth_to_max_tensors[n - 1]];
   int64_t numel_for_tensor[depth_to_max_tensors[n - 1]];
   unsigned char block_to_tensor[depth_to_max_blocks[n - 1]];
-  int block_to_chunk[depth_to_max_blocks[n - 1]];
+  int64_t block_to_chunk[depth_to_max_blocks[n - 1]];
   int start_tensor_this_launch;
 };
 
@@ -54,7 +54,7 @@ struct TensorListScalarListMetadata {
   int64_t numel_for_tensor[depth_to_max_tensors_scalarlist[n - 1]];
   scalar_vals_t scalar_vals[depth_to_max_tensors_scalarlist[n - 1]];
   unsigned char block_to_tensor[depth_to_max_blocks[n - 1]];
-  int block_to_chunk[depth_to_max_blocks[n - 1]];
+  int64_t block_to_chunk[depth_to_max_blocks[n - 1]];
 };
 
 // note(mkozuki): `n` of 1&2 violate the limit of cuda kernel argument size of
@@ -68,7 +68,7 @@ struct TensorListScalarListMetadata<c10::complex<double>, 1> {
   c10::complex<double>
       scalar_vals[depth_to_max_tensors_scalarlist_of_complex_double[0]];
   unsigned char block_to_tensor[depth_to_max_blocks[1 - 1]];
-  int block_to_chunk[depth_to_max_blocks[1 - 1]];
+  int64_t block_to_chunk[depth_to_max_blocks[1 - 1]];
 };
 
 template <>
@@ -80,7 +80,7 @@ struct TensorListScalarListMetadata<c10::complex<double>, 2> {
   c10::complex<double>
       scalar_vals[depth_to_max_tensors_scalarlist_of_complex_double[1]];
   unsigned char block_to_tensor[depth_to_max_blocks[2 - 1]];
-  int block_to_chunk[depth_to_max_blocks[2 - 1]];
+  int64_t block_to_chunk[depth_to_max_blocks[2 - 1]];
 };
 
 // NOTE(crcrpar): This is a conservative resolution to handle `state_steps`
@@ -92,7 +92,7 @@ struct FusedOptimizerTensorListMetadata {
   int64_t numel_for_tensor[depth_to_max_tensors[n - 1]];
   const void* state_steps_addresses[depth_to_max_tensors_scalarlist[n - 1]];
   unsigned char block_to_tensor[depth_to_max_blocks[n - 1]];
-  int block_to_chunk[depth_to_max_blocks[n - 1]];
+  int64_t block_to_chunk[depth_to_max_blocks[n - 1]];
   int start_tensor_this_launch;
 };
 

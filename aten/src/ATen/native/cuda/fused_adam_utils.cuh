@@ -134,7 +134,7 @@ struct FusedAdamMathFunctor {
         auto *step_count = reinterpret_cast<const float*>(tl.state_steps_addresses[tensor_loc]);
 
         scalar_type* args[depth];
-        const bool all_aligned{init_args<depth>(args, tl, chunk_idx, chunk_size, tensor_loc)};
+        const bool all_aligned{init_args<depth>(args, tl, static_cast<index_t>(chunk_idx), chunk_size, tensor_loc)};
         n -= chunk_idx * chunk_size;
         scalar_type r_args[depth][kILP];
 
