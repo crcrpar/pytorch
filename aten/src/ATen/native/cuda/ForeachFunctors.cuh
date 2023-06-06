@@ -1,6 +1,7 @@
 #pragma once
 #include <ATen/OpMathType.h>
 #include <ATen/native/ForeachUtils.h>
+#include <c10/macros/Macros.h>
 #include <ATen/native/cuda/MultiTensorApply.cuh>
 #include <ATen/native/cuda/Pow.cuh>
 
@@ -86,6 +87,7 @@ __device__ void load_args(
 #pragma unroll
   for (int ii = 0; ii < kILP; ii++) {
     const auto i = i_start + threadIdx.x + ii * blockDim.x;
+    CUDA_KERNEL_ASSERT(i > -1);
     for (int r_index = 0; r_index < depth; r_index++) {
       r_args[r_index][ii] = 0;
       if (i < n && i < chunk_size) {
@@ -105,6 +107,7 @@ __device__ void store_args(
 #pragma unroll
   for (int ii = 0; ii < kILP; ii++) {
     const auto i = i_start + threadIdx.x + ii * blockDim.x;
+    CUDA_KERNEL_ASSERT(i > -1);
     if (i < n && i < chunk_size)
       dst[i] = src[ii];
   }
