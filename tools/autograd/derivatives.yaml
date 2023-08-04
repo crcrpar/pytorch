@@ -2959,3 +2959,43 @@
 - name: _reshape_copy(Tensor self, SymInt[] size) -> Tensor
   self: grad.reshape_symint(self.sym_sizes())
   result: auto_linear
+
+# - name: _foreach_add.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+#   self: handle_r_to_c(self[i].scalar_type(), grads[i])
+#   other: handle_r_to_c(other[i].scalar_type(), maybe_multiply(grads[i], alpha.conj()))
+
+- name: _foreach_add.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
+
+- name: _foreach_add.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
+
+- name: _foreach_sub.List(Tensor[] self, Tensor[] other, *, Scalar alpha=1) -> Tensor[]
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
+  other: handle_r_to_c(other[i].scalar_type(), maybe_multiply(-grads[i], alpha.conj()))
+
+- name: _foreach_sub.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
+
+- name: _foreach_sub.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  self: handle_r_to_c(self[i].scalar_type(), grads[i])
+
+- name: _foreach_mul.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  self: mul_tensor_backward(grads[i], other[i], self[i].scalar_type())
+  other: mul_tensor_backward(grads[i], self[i], other[i].scalar_type())
+
+- name: _foreach_mul.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  self: mul_tensor_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalar)), self[i].scalar_type())
+
+- name: _foreach_mul.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  self: mul_tensor_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalars[i])), self[i].scalar_type())
+
+- name: _foreach_div.List(Tensor[] self, Tensor[] other) -> Tensor[]
+  self: div_tensor_self_backward(grads[i], other[i], self[i].scalar_type())
+  other: div_tensor_other_backward(grads[i], self[i], other[i])
+
+- name: _foreach_div.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  self: div_tensor_self_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalar)), self[i].scalar_type())
+
+- name: _foreach_div.ScalarList(Tensor[] self, Scalar[] scalars) -> Tensor[]
+  self: div_tensor_self_backward(grads[i], at::lift_fresh(at::scalar_to_tensor(scalars[i])), self[i].scalar_type())

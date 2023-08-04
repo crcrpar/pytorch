@@ -123,6 +123,8 @@ class TestForeach(TestCase):
                 dtype, wrapped_op, ref, [sample.input, rhs_arg], is_fastpath and not disable_fastpath, False, alpha=alpha)
             self._binary_test(
                 dtype, inplace_op, inplace_ref, [sample.input, rhs_arg], is_fastpath and not disable_fastpath, True, alpha=alpha)
+            if op.supports_autograd and dtype in floating_types():
+                pass
 
     @ops(foreach_pointwise_op_db)
     @parametrize("is_fastpath", (True, False))
@@ -257,6 +259,17 @@ class TestForeach(TestCase):
             )
             self.assertEqual(ref(inputs), wrapped_op(inputs, self.is_cuda, is_fastpath and not disable_fastpath))
             self._inplace_unary_test(inplace_op, inplace_ref, [sample.input], is_fastpath and not disable_fastpath)
+            if op.supports_autograd and dtype in floating_types():
+                num_tensors = len(sample.input)
+                shape = (num_tensors, num_tensors)
+                tensors = [
+                    make_tensor(shape, dtype=dtype, device=device, requires_grad=True, noncontiguous=not is_fastpath)
+                    for _ in range(num_tensors)
+                ]
+                ref_tensors = [t.clone().detach().requires_grad_() for t in tensors]
+                sum(wrapped_op.func(tensors)).mean().backward()
+                sum([ref.func(t) for t in ref_tensors]).mean().backward()
+                self.assertEqual([t.grad for t in tensors], [t.grad for t in ref_tensors])
 
     @ops(foreach_reduce_op_db)
     @parametrize("is_fastpath", (True, False))

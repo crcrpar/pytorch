@@ -9,6 +9,8 @@
 #include <cmath>
 #endif
 
+#include <vector>
+
 #include <ATen/ATen.h>
 #include <torch/csrc/autograd/generated/Functions.h>
 
