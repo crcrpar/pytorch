@@ -15,6 +15,21 @@ static constexpr int64_t kChunkSize = 65536;
 static constexpr int64_t kBlockSize = 512;
 
 // TODO(crcrpar): Add `n>5` for `low prec params & their higher prec copy`
+// note(crcrpar): CUDA>=12.1 supports larger kernel parameters up to 32,764
+// bytes.
+//   ref:
+//   https://developer.nvidia.com/blog/cuda-12-1-supports-large-kernel-parameters/
+#if (defined(CUDA_VERSION) && CUDA_VERSION >= 12010 && (!defined(USE_ROCM)))
+static constexpr int depth_to_max_tensors[5] =
+    {110 * 8, 64 * 8, 48 * 8, 36 * 8, 30 * 8};
+static constexpr int depth_to_max_blocks[5] =
+    {320 * 8, 320 * 8, 320 * 8, 320 * 8, 320 * 8};
+static constexpr int depth_to_max_tensors_scalarlist[5] =
+    {96 * 8, 64 * 8, 48 * 8, 36 * 8, 30 * 8};
+static constexpr int depth_to_max_tensors_scalarlist_of_complex_double[2] = {
+    72 * 8,
+    60 * 8};
+#else
 // TensorListMetadata has to be < 4KB - the limit for kernel launch argument
 static constexpr int depth_to_max_tensors[5] = {110, 64, 48, 36, 30};
 static constexpr int depth_to_max_blocks[5] = {320, 320, 320, 320, 320};
@@ -22,6 +37,7 @@ static constexpr int depth_to_max_tensors_scalarlist[5] = {96, 64, 48, 36, 30};
 static constexpr int depth_to_max_tensors_scalarlist_of_complex_double[2] = {
     72,
     60};
+#endif
 
 template <typename T>
 __device__ __forceinline__ bool is_aligned(T* p) {
