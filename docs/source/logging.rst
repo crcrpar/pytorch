@@ -51,6 +51,9 @@ Components:
         ``inductor``
             The log level for the TorchInductor component. Default: ``logging.WARN``
 
+        ``autograd``
+            The log level for the backward engine component. Default: ``logging.WARN``
+
         ``your.custom.module``
             The log level for an arbitrary unregistered module. Provide the fully qualified name and the module will be enabled. Default: ``logging.WARN``
 
