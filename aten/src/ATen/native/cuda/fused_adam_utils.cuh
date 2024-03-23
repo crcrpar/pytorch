@@ -32,8 +32,8 @@ C10_DEVICE inline void adam_math(
     const double& weight_decay,
     const double& eps,
     const bool& maximize,
-    const float* grad_scale_ptr,
     const float* found_inf_ptr,
+    const float* grad_scale_ptr,
     const opmath_t& bias_correction1,
     const opmath_t& bias_correction2_sqrt) {
   static_assert(depth == 4 || depth == 5);
@@ -103,7 +103,7 @@ C10_DEVICE inline void adam_math(
 // optimizers and `_multi_tensor` ones, the kernel below writes out gradients
 // only when `grad_scale_ptr != nullptr.
 template <typename scalar_type, int depth, ADAM_MODE adam_mode, bool amsgrad>
-struct FusedAdamMathFunctor {
+struct FusedAdamMathFunctorWithFoundInfAndGradScaler {
   static_assert(
       depth == 4 || depth == 5,
       "depth of 4 for Adam, depth of 5 for Adam with AMSGrad.");
@@ -118,8 +118,8 @@ struct FusedAdamMathFunctor {
       const double& weight_decay,
       const double& eps,
       const bool& maximize,
-      const float* grad_scale_ptr,
-      const float* found_inf_ptr) {
+      const float* found_inf_ptr,
+      const float* grad_scale_ptr) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
     const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
     const double lr_double = lr_ptr ? *lr_ptr : lr;
@@ -159,8 +159,8 @@ struct FusedAdamMathFunctor {
             weight_decay,
             eps,
             maximize,
-            grad_scale_ptr,
             found_inf_ptr,
+            grad_scale_ptr,
             bias_correction1,
             bias_correction2_sqrt);
 #pragma unroll
@@ -182,8 +182,8 @@ struct FusedAdamMathFunctor {
             weight_decay,
             eps,
             maximize,
-            grad_scale_ptr,
             found_inf_ptr,
+            grad_scale_ptr,
             bias_correction1,
             bias_correction2_sqrt);
 #pragma unroll
