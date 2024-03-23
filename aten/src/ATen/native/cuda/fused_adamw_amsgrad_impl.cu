@@ -43,23 +43,37 @@ void _fused_adamw_amsgrad_cuda_impl_(
       params[0].scalar_type(),
       "fused_adamw_kernel_cuda",
       [&]() {
-        multi_tensor_apply_for_fused_optimizer<5>(
-            tensor_lists,
-            state_steps,
-            FusedAdamMathFunctorWithFoundInfAndGradScaler<
-                scalar_t,
-                5,
-                ADAM_MODE::ADAMW,
-                true>(),
-            lr_ptr, // unused
-            lr,
-            beta1,
-            beta2,
-            weight_decay,
-            eps,
-            maximize,
-            found_inf_ptr,
-            grad_scale_ptr);
+        if (grad_scale_ptr != nullptr || found_inf_ptr != nullptr) {
+          multi_tensor_apply_for_fused_optimizer<5>(
+              tensor_lists,
+              state_steps,
+              FusedAdamMathFunctorWithFoundInfAndGradScaler<
+                  scalar_t,
+                  5,
+                  ADAM_MODE::ADAMW,
+                  true>(),
+              lr_ptr, // unused
+              lr,
+              beta1,
+              beta2,
+              weight_decay,
+              eps,
+              maximize,
+              found_inf_ptr,
+              grad_scale_ptr);
+        } else {
+          multi_tensor_apply_for_fused_optimizer<5>(
+              tensor_lists,
+              state_steps,
+              FusedAdamMathFunctor<scalar_t, 5, ADAM_MODE::ADAMW, true>(),
+              lr_ptr, // unused
+              lr,
+              beta1,
+              beta2,
+              weight_decay,
+              eps,
+              maximize);
+        }
       });
 }
 
@@ -98,23 +112,37 @@ void _fused_adamw_amsgrad_cuda_impl_(
       params[0].scalar_type(),
       "fused_adamw_kernel_cuda",
       [&]() {
-        multi_tensor_apply_for_fused_optimizer<5>(
-            tensor_lists,
-            state_steps,
-            FusedAdamMathFunctorWithFoundInfAndGradScaler<
-                scalar_t,
-                5,
-                ADAM_MODE::ADAMW,
-                true>(),
-            lr_ptr,
-            1.0, // unused
-            beta1,
-            beta2,
-            weight_decay,
-            eps,
-            maximize,
-            found_inf_ptr,
-            grad_scale_ptr);
+        if (grad_scale_ptr != nullptr || found_inf_ptr != nullptr) {
+          multi_tensor_apply_for_fused_optimizer<5>(
+              tensor_lists,
+              state_steps,
+              FusedAdamMathFunctorWithFoundInfAndGradScaler<
+                  scalar_t,
+                  5,
+                  ADAM_MODE::ADAMW,
+                  true>(),
+              lr_ptr,
+              1.0, // unused
+              beta1,
+              beta2,
+              weight_decay,
+              eps,
+              maximize,
+              found_inf_ptr,
+              grad_scale_ptr);
+        } else {
+          multi_tensor_apply_for_fused_optimizer<5>(
+              tensor_lists,
+              state_steps,
+              FusedAdamMathFunctor<scalar_t, 5, ADAM_MODE::ADAMW, true>(),
+              lr_ptr,
+              1.0, // unused
+              beta1,
+              beta2,
+              weight_decay,
+              eps,
+              maximize);
+        }
       });
 }
 
