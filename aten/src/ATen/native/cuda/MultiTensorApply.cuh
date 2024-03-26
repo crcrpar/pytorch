@@ -294,6 +294,19 @@ void multi_tensor_apply(
   }
 }
 
+namespace {
+template <typename T, typename U, typename... ArgTypes>
+C10_LAUNCH_BOUNDS_2(kBlockSize, 8)
+__global__ void multi_tensor_apply_kernel_for_optimizer(
+    T tensorListMeta,
+    U callable,
+    ArgTypes... args) {
+  // Hand the chunk information to the user-supplied functor to process however
+  // it likes.
+  callable(kChunkSize, tensorListMeta, args...);
+}
+} // namespace
+
 template <int depth, typename T, typename... ArgTypes>
 void multi_tensor_apply_for_fused_optimizer(
     std::vector<std::vector<at::Tensor>>& tensor_lists,
@@ -338,7 +351,7 @@ void multi_tensor_apply_for_fused_optimizer(
       const auto blocks_full = loc_block_info == depth_to_max_blocks[depth - 1];
 
       if (tensor_full || blocks_full) {
-        multi_tensor_apply_kernel<<<
+        multi_tensor_apply_kernel_for_optimizer<<<
             loc_block_info,
             kBlockSize,
             0,
@@ -367,7 +380,7 @@ void multi_tensor_apply_for_fused_optimizer(
 
   // see above note: [finishing what we've started]
   if (loc_block_info != 0) {
-    multi_tensor_apply_kernel<<<
+    multi_tensor_apply_kernel_for_optimizer<<<
         loc_block_info,
         kBlockSize,
         0,
