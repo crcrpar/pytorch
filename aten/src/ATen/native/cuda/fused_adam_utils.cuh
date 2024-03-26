@@ -58,10 +58,8 @@ C10_DEVICE void adam_math(
     // Update param, grad, 1st and 2nd order momentum.
     if (weight_decay != 0) {
       if constexpr (adam_mode == ADAM_MODE::ORIGINAL) {
-        // grad += param * weight_decay;
         grad = fma(param, weight_decay, grad);
       } else if constexpr (adam_mode == ADAM_MODE::ADAMW) {
-        // param -= lr * weight_decay * param;
         param *= (1 - lr * weight_decay);
       }
     }
@@ -78,13 +76,11 @@ C10_DEVICE void adam_math(
       const auto max_exp_avg_sq = std::max(
           static_cast<opmath_t>(r_args[kMaxExpAvgSqIdx][ii]), exp_avg_sq);
       r_args[kMaxExpAvgSqIdx][ii] = max_exp_avg_sq;
-      // denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
       denom = fma(std::sqrt(max_exp_avg_sq), 1.0 / bias_correction2_sqrt, eps);
     } else {
-      // denom = (std::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
       denom = fma(std::sqrt(exp_avg_sq), 1.0 / bias_correction2_sqrt, eps);
     }
-    param -= (lr * exp_avg) / (bias_correction1 * denom);
+    param = fma(-(lr * exp_avg), 1.0 / (bias_correction1 * denom), param);
 
     // Store results.
     r_args[kParamIdx][ii] = param;
