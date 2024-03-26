@@ -12,6 +12,12 @@ enum class ADAM_MODE : uint8_t { ORIGINAL = 0, ADAMW = 1 };
 
 namespace {
 
+// ref: https://developer.nvidia.com/blog/lerp-faster-cuda/
+template <typename T, typename U>
+C10_DEVICE inline T _device_lerp(T v0, T v1, U t) {
+  return fma(t, v1, fma(-t, v0, v0));
+}
+
 constexpr uint8_t kParamIdx = 0;
 constexpr uint8_t kGradIdx = 1;
 constexpr uint8_t kExpAvgIdx = 2;
@@ -24,7 +30,7 @@ template <
     int depth,
     ADAM_MODE adam_mode,
     bool amsgrad>
-C10_DEVICE inline void adam_math(
+C10_DEVICE void adam_math(
     scalar_type r_args[depth][kILP],
     const double& lr,
     const double& beta1,
@@ -44,16 +50,10 @@ C10_DEVICE inline void adam_math(
     opmath_t grad = static_cast<opmath_t>(r_args[kGradIdx][ii]);
     if (grad_scale_ptr) {
       grad /= (static_cast<double>(*grad_scale_ptr));
+      r_args[kGradIdx][ii] = grad;
     }
-    const opmath_t grad_to_store = grad;
     if (maximize) {
       grad = -grad;
-    }
-    opmath_t exp_avg = static_cast<opmath_t>(r_args[kExpAvgIdx][ii]);
-    opmath_t exp_avg_sq = static_cast<opmath_t>(r_args[kExpAvgSqIdx][ii]);
-    opmath_t max_exp_avg_sq;
-    if (amsgrad) {
-      max_exp_avg_sq = static_cast<opmath_t>(r_args[kMaxExpAvgSqIdx][ii]);
     }
     // Update param, grad, 1st and 2nd order momentum.
     if (weight_decay != 0) {
@@ -63,14 +63,20 @@ C10_DEVICE inline void adam_math(
         param -= lr * weight_decay * param;
       }
     }
-    // todo(crcrpar): use lerp
-    // ref: https://developer.nvidia.com/blog/lerp-faster-cuda/
-    exp_avg = beta1 * exp_avg + (1 - beta1) * grad;
-    exp_avg_sq = beta2 * exp_avg_sq + (1 - beta2) * grad * grad;
+
+    const auto exp_avg = _device_lerp(
+        grad, static_cast<opmath_t>(r_args[kExpAvgIdx][ii]), beta1);
+    const auto exp_avg_sq = _device_lerp(
+        grad * grad, static_cast<opmath_t>(r_args[kExpAvgSqIdx][ii]), beta2);
+    r_args[kExpAvgIdx][ii] = exp_avg;
+    r_args[kExpAvgSqIdx][ii] = exp_avg_sq;
+
     const opmath_t step_size = lr / bias_correction1;
     opmath_t denom;
     if (amsgrad) {
-      max_exp_avg_sq = std::max(max_exp_avg_sq, exp_avg_sq);
+      const auto max_exp_avg_sq = std::max(
+          static_cast<opmath_t>(r_args[kMaxExpAvgSqIdx][ii]), exp_avg_sq);
+      r_args[kMaxExpAvgSqIdx][ii] = max_exp_avg_sq;
       denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
     } else {
       denom = (std::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
@@ -79,14 +85,6 @@ C10_DEVICE inline void adam_math(
 
     // Store results.
     r_args[kParamIdx][ii] = param;
-    if (grad_scale_ptr) {
-      r_args[kGradIdx][ii] = grad_to_store;
-    }
-    r_args[kExpAvgIdx][ii] = exp_avg;
-    r_args[kExpAvgSqIdx][ii] = exp_avg_sq;
-    if (amsgrad) {
-      r_args[kMaxExpAvgSqIdx][ii] = max_exp_avg_sq;
-    }
   }
 }
 
@@ -108,7 +106,7 @@ struct FusedAdamMathFunctor {
       depth == 4 || depth == 5,
       "depth of 4 for Adam, depth of 5 for Adam with AMSGrad.");
   using opmath_t = at::opmath_type<scalar_type>;
-  C10_DEVICE __forceinline__ void operator()(
+  C10_DEVICE void operator()(
       int chunk_size,
       FusedOptimizerTensorListMetadata<depth>& tl,
       const float* lr_ptr,
