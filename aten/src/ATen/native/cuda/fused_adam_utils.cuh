@@ -46,7 +46,6 @@ C10_DEVICE void adam_math(
 #pragma unroll
   for (int ii = 0; ii < kILP; ii++) {
     // Load values.
-    opmath_t param = static_cast<opmath_t>(r_args[kParamIdx][ii]);
     opmath_t grad = static_cast<opmath_t>(r_args[kGradIdx][ii]);
     if (grad_scale_ptr) {
       grad /= (static_cast<double>(*grad_scale_ptr));
@@ -55,33 +54,37 @@ C10_DEVICE void adam_math(
     if (maximize) {
       grad = -grad;
     }
+    opmath_t param = static_cast<opmath_t>(r_args[kParamIdx][ii]);
     // Update param, grad, 1st and 2nd order momentum.
     if (weight_decay != 0) {
       if constexpr (adam_mode == ADAM_MODE::ORIGINAL) {
-        grad += param * weight_decay;
+        // grad += param * weight_decay;
+        grad = fma(param, weight_decay, grad);
       } else if constexpr (adam_mode == ADAM_MODE::ADAMW) {
-        param -= lr * weight_decay * param;
+        // param -= lr * weight_decay * param;
+        param *= (1 - lr * weight_decay);
       }
     }
 
     const auto exp_avg = _device_lerp(
         grad, static_cast<opmath_t>(r_args[kExpAvgIdx][ii]), beta1);
+    r_args[kExpAvgIdx][ii] = exp_avg;
     const auto exp_avg_sq = _device_lerp(
         grad * grad, static_cast<opmath_t>(r_args[kExpAvgSqIdx][ii]), beta2);
-    r_args[kExpAvgIdx][ii] = exp_avg;
     r_args[kExpAvgSqIdx][ii] = exp_avg_sq;
 
-    const opmath_t step_size = lr / bias_correction1;
     opmath_t denom;
     if (amsgrad) {
       const auto max_exp_avg_sq = std::max(
           static_cast<opmath_t>(r_args[kMaxExpAvgSqIdx][ii]), exp_avg_sq);
       r_args[kMaxExpAvgSqIdx][ii] = max_exp_avg_sq;
-      denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
+      // denom = (std::sqrt(max_exp_avg_sq) / bias_correction2_sqrt) + eps;
+      denom = fma(std::sqrt(max_exp_avg_sq), 1.0 / bias_correction2_sqrt, eps);
     } else {
-      denom = (std::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
+      // denom = (std::sqrt(exp_avg_sq) / bias_correction2_sqrt) + eps;
+      denom = fma(std::sqrt(exp_avg_sq), 1.0 / bias_correction2_sqrt, eps);
     }
-    param -= step_size * exp_avg / denom;
+    param -= (lr * exp_avg) / (bias_correction1 * denom);
 
     // Store results.
     r_args[kParamIdx][ii] = param;
