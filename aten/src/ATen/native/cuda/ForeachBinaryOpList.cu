@@ -1,5 +1,6 @@
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
+#include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/native/cuda/ForeachFunctors.cuh>
 #include <ATen/native/cuda/ForeachMinMaxFunctors.cuh>
@@ -387,9 +388,11 @@ void foreach_tensor_copy_list_kernel_cuda_(
     TensorList self,
     TensorList src,
     const bool non_blocking) {
+  const bool is_ampere_or_later =
+      (at::cuda::getCurrentDeviceProperties())->major > 7;
   check_foreach_api_restrictions(self, src);
   if (!(_check_tensors_share_device_and_dtype(
-            {self, src}, /* skip_dtype_check */ true) &&
+            {self, src}, /* skip_dtype_check */ is_ampere_or_later) &&
         std::all_of(
             src.cbegin(),
             src.cend(),
