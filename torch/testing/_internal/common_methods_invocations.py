@@ -9848,6 +9848,7 @@ foreach_binary_op_db: List[OpInfo] = [
     ForeachFuncInfo(
         "copy",
         foreach_inputs_sample_func(2, False, False),
+        dtypesIfCUDA=all_types_and(torch.bfloat16, torch.float16),
         dtypes=all_types_and_complex_and(torch.bfloat16, torch.half),
         supports_out=False,
         supports_forward_ad=False,
