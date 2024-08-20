@@ -409,23 +409,44 @@ FOREACH_POINTWISE_OP_SCALARLIST(addcmul);
 FOREACH_POINTWISE_OP_TENSOR(addcdiv);
 FOREACH_POINTWISE_OP_TENSOR(addcmul);
 
-#define FOREACH_TERNARY_OP(OP)                                         \
-  std::vector<Tensor> foreach_tensor_ternary_##OP##_slow(              \
-      TensorList tensors1, TensorList tensors2, TensorList tensors3) { \
-    check_foreach_api_restrictions(tensors1, tensors2, tensors3);      \
-    std::vector<Tensor> result;                                        \
-    for (const auto i : c10::irange(tensors1.size())) {                \
-      result.emplace_back(tensors1[i].OP(tensors2[i], tensors3[i]));   \
-    }                                                                  \
-    return result;                                                     \
-  }                                                                    \
-                                                                       \
-  void foreach_tensor_ternary_##OP##_slow_(                            \
-      TensorList tensors1, TensorList tensors2, TensorList tensors3) { \
-    check_foreach_api_restrictions(tensors1, tensors2, tensors3);      \
-    for (const auto i : c10::irange(tensors1.size())) {                \
-      tensors1[i].OP##_(tensors2[i], tensors3[i]);                     \
-    }                                                                  \
+#define FOREACH_TERNARY_OP(OP)                                             \
+  std::vector<Tensor> foreach_tensor_ternary_##OP##_slow(                  \
+      TensorList tensors1, TensorList tensors2, TensorList tensors3) {     \
+    check_foreach_api_restrictions(tensors1, tensors2, tensors3);          \
+    std::vector<Tensor> result;                                            \
+    for (const auto i : c10::irange(tensors1.size())) {                    \
+      result.emplace_back(tensors1[i].OP(tensors2[i], tensors3[i]));       \
+    }                                                                      \
+    return result;                                                         \
+  }                                                                        \
+                                                                           \
+  void foreach_tensor_ternary_##OP##_slow_(                                \
+      TensorList tensors1, TensorList tensors2, TensorList tensors3) {     \
+    check_foreach_api_restrictions(tensors1, tensors2, tensors3);          \
+    for (const auto i : c10::irange(tensors1.size())) {                    \
+      tensors1[i].OP##_(tensors2[i], tensors3[i]);                         \
+    }                                                                      \
+  }                                                                        \
+  std::vector<Tensor> foreach_tensor_ternary_##OP##_scalarlist_slow(       \
+      TensorList tensors1,                                                 \
+      TensorList tensors2,                                                 \
+      at::ArrayRef<Scalar> scalars) {                                      \
+    check_foreach_api_restrictions(tensors1, tensors2, tensors1, scalars); \
+    std::vector<Tensor> result;                                            \
+    for (const auto i : c10::irange(tensors1.size())) {                    \
+      result.emplace_back(tensors1[i].OP(tensors2[i], scalars[i]));        \
+    }                                                                      \
+    return result;                                                         \
+  }                                                                        \
+                                                                           \
+  void foreach_tensor_ternary_##OP##_scalarlist_slow_(                     \
+      TensorList tensors1,                                                 \
+      TensorList tensors2,                                                 \
+      at::ArrayRef<Scalar> scalars) {                                      \
+    check_foreach_api_restrictions(tensors1, tensors2, tensors1, scalars); \
+    for (const auto i : c10::irange(tensors1.size())) {                    \
+      tensors1[i].OP##_(tensors2[i], scalars[i]);                          \
+    }                                                                      \
   }
 
 FOREACH_TERNARY_OP(lerp);
