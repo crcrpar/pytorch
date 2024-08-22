@@ -2,6 +2,7 @@
 #include <c10/core/TensorOptions.h>
 #include <c10/util/irange.h>
 #include <limits>
+#include <utility>
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -19,6 +20,7 @@
 #else
 #include <ATen/ops/_foreach_max_native.h>
 #include <ATen/ops/_foreach_norm_native.h>
+#include <ATen/ops/_foreach_global_norm_native.h>
 
 #include <ATen/ops/empty_native.h>
 #include <ATen/ops/zeros.h>
@@ -245,8 +247,11 @@ struct LpNormFunctor {
   __device__ __forceinline__ void operator()(
       int chunk_size,
       TensorListMetadata<depth>& tl,
+      out_opmath_t* global_output_ptr,
       out_opmath_t* output_per_tensor_ptr,
-      const int max_chunks_per_tensor) {
+      const int max_chunks_per_tensor,
+      const bool calculate_global_norm,
+      const bool calculate_norm_per_tensor) {
     const auto tensor_loc = tl.block_to_tensor[blockIdx.x];
     const auto chunk_idx = tl.block_to_chunk[blockIdx.x];
     auto n = tl.numel_for_tensor[tensor_loc];
@@ -310,9 +315,15 @@ struct LpNormFunctor {
         : at::native::cuda_utils::BlockReduceMax(val, s_vals);
 
     if (threadIdx.x == 0) {
-      output_per_tensor_ptr
-          [(tl.start_tensor_this_launch + tensor_loc) * max_chunks_per_tensor +
-           chunk_idx] = final_val;
+      if (calculate_global_norm) {
+        global_output_ptr[blockIdx.x] += final_val;
+      }
+      if (calculate_norm_per_tensor) {
+        output_per_tensor_ptr
+            [(tl.start_tensor_this_launch + tensor_loc) *
+                 max_chunks_per_tensor +
+             chunk_idx] = final_val;
+      }
     }
   }
 };
@@ -323,30 +334,55 @@ template <
     typename out_t,
     typename out_opmath_t = at::opmath_type<out_t>>
 __global__ void lpnorm_cleanup(
+    out_t* global_norm,
     const out_opmath_t* output_per_tensor,
     TensorListAddresses addr_struct,
-    int max_chunks_per_tensor) {
+    int max_chunks_per_tensor,
+    const bool calculate_global_norm,
+    const bool calculate_norm_per_tensor) {
   __shared__ out_opmath_t vals[512];
 
-  const out_opmath_t* output_this_tensor =
-      output_per_tensor + blockIdx.x * max_chunks_per_tensor;
-  out_opmath_t val = 0;
-  for (size_t i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x) {
-    if constexpr (norm_type == NormType::LInf) {
-      val = max_propagate_nan(val, output_this_tensor[i]);
-    } else {
-      val += output_this_tensor[i];
+  if (calculate_global_norm) {
+    if (blockIdx.x == 0) {
+      out_opmath_t val{0};
+      if (threadIdx.x < 320) {
+        val = global_norm[threadIdx.x];
+      }
+      out_opmath_t final_val =
+          norm_type == NormType::L1 || norm_type == NormType::L2
+          ? at::native::cuda_utils::BlockReduceSum<out_opmath_t>(val, vals)
+          : at::native::cuda_utils::BlockReduceMax(val, vals);
+
+      if (threadIdx.x == 0) {
+        *global_norm = static_cast<out_t>(
+            norm_type == NormType::L1 || norm_type == NormType::LInf
+                ? final_val
+                : ::sqrt(final_val));
+      }
     }
   }
-  out_opmath_t final_val =
-      norm_type == NormType::L1 || norm_type == NormType::L2
-      ? at::native::cuda_utils::BlockReduceSum<out_opmath_t>(val, vals)
-      : at::native::cuda_utils::BlockReduceMax(val, vals);
-  if (threadIdx.x == 0) {
-    *(out_t*)addr_struct.addresses[blockIdx.x] =
-        norm_type == NormType::L1 || norm_type == NormType::LInf
-        ? final_val
-        : ::sqrt(final_val);
+
+  if (calculate_norm_per_tensor) {
+    const out_opmath_t* output_this_tensor =
+        output_per_tensor + blockIdx.x * max_chunks_per_tensor;
+    out_opmath_t val = 0;
+    for (size_t i = threadIdx.x; i < max_chunks_per_tensor; i += blockDim.x) {
+      if constexpr (norm_type == NormType::LInf) {
+        val = max_propagate_nan(val, output_this_tensor[i]);
+      } else {
+        val += output_this_tensor[i];
+      }
+    }
+    out_opmath_t final_val =
+        norm_type == NormType::L1 || norm_type == NormType::L2
+        ? at::native::cuda_utils::BlockReduceSum<out_opmath_t>(val, vals)
+        : at::native::cuda_utils::BlockReduceMax(val, vals);
+    if (threadIdx.x == 0) {
+      *(out_t*)addr_struct.addresses[blockIdx.x] =
+          norm_type == NormType::L1 || norm_type == NormType::LInf
+          ? final_val
+          : ::sqrt(final_val);
+    }
   }
 }
 
@@ -403,10 +439,18 @@ inline void check_foreach_norm_dtype(
 // - Int: at::norm does not support.
 // - Complex: __shfl_down_sync does not support complex and foreach does not
 // support functions whose inputs dtypes and output dtype are different.
-std::vector<Tensor> foreach_tensor_norm_cuda(
+std::pair<std::vector<Tensor>, Tensor> _foreach_tensor_norm_cuda_impl(
     TensorList tensors,
     const Scalar& ord,
-    std::optional<ScalarType> dtype) {
+    std::optional<ScalarType> dtype,
+    const bool calculate_global_norm,
+    const bool calculate_norm_per_tensor) {
+  TORCH_INTERNAL_ASSERT(
+      calculate_global_norm || calculate_norm_per_tensor,
+      "either calculate_global_norm or calculate_norm_per_tensor should be true but calculate_global_norm: ",
+      calculate_global_norm,
+      ", and calculate_norm_per_tensor: ",
+      calculate_norm_per_tensor);
   const auto p = [&]() -> double {
     if (ord.isIntegral(false)) {
       return ord.to<int64_t>();
@@ -427,7 +471,9 @@ std::vector<Tensor> foreach_tensor_norm_cuda(
   if (!can_use_fast_route(tensors) || has_int_or_complex ||
       !(p == static_cast<double>(1) || p == static_cast<double>(2) ||
         p == std::numeric_limits<double>::infinity())) {
-    return foreach_tensor_norm_slow(tensors, ord, dtype);
+    return std::make_pair(
+        calculate_norm_per_tensor ? foreach_tensor_norm_slow(tensors, ord, dtype) : std::vector<Tensor>{},
+        calculate_global_norm ? foreach_tensor_global_norm_slow(tensors, ord, dtype) : Tensor());
   }
   check_foreach_norm_dtype(
       dtype, tensors[0].scalar_type(), "_foreach_tensor_norm_cuda");
@@ -449,6 +495,9 @@ std::vector<Tensor> foreach_tensor_norm_cuda(
   auto output_per_tensor = at::zeros(
       {static_cast<int64_t>(ntensors) * max_chunks_per_tensor},
       options.dtype(output_per_tensor_dtype));
+  auto global_output = at::zeros({320}, options.dtype(output_per_tensor_dtype));
+
+  auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
 
   std::vector<at::Tensor> vec_res;
   vec_res.reserve(ntensors);
@@ -462,8 +511,13 @@ std::vector<Tensor> foreach_tensor_norm_cuda(
         res_option.pinned_memory_opt(),
         res_option.memory_format_opt()));
   }
-
-  auto tensor_lists = std::vector<std::vector<Tensor>>{tensors.vec()};
+  auto global_norm = at::native::empty_cuda(
+      {},
+      optTypeMetaToScalarType(res_option.dtype_opt()),
+      res_option.layout_opt(),
+      res_option.device_opt(),
+      res_option.pinned_memory_opt(),
+      res_option.memory_format_opt());
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf,
@@ -471,7 +525,6 @@ std::vector<Tensor> foreach_tensor_norm_cuda(
       tensor_lists[0][0].scalar_type(),
       "foreach_tensor_norm_cuda_scalar_type",
       [&]() {
-        // using opmath_t = typename at::opmath_type<scalar_t>;
         AT_DISPATCH_OUT_DTYPES(
             output_dtype, "foreach_tensor_norm_cuda_out_dtype", [&]() {
               using out_opmath_t = typename at::opmath_type<out_t>;
@@ -479,20 +532,29 @@ std::vector<Tensor> foreach_tensor_norm_cuda(
                 multi_tensor_apply<1>(
                     tensor_lists,
                     LpNormFunctor<scalar_t, NormType::L1, out_t>(),
+                    global_output.mutable_data_ptr<out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    max_chunks_per_tensor);
+                    max_chunks_per_tensor,
+                    calculate_global_norm,
+                    calculate_norm_per_tensor);
               } else if (p == static_cast<double>(2)) {
                 multi_tensor_apply<1>(
                     tensor_lists,
                     LpNormFunctor<scalar_t, NormType::L2, out_t>(),
+                    global_output.mutable_data_ptr<out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    max_chunks_per_tensor);
+                    max_chunks_per_tensor,
+                    calculate_global_norm,
+                    calculate_norm_per_tensor);
               } else if (p == std::numeric_limits<double>::infinity()) {
                 multi_tensor_apply<1>(
                     tensor_lists,
                     LpNormFunctor<scalar_t, NormType::LInf, out_t>(),
+                    global_output.mutable_data_ptr<out_opmath_t>(),
                     output_per_tensor.mutable_data_ptr<out_opmath_t>(),
-                    max_chunks_per_tensor);
+                    max_chunks_per_tensor,
+                    calculate_global_norm,
+                    calculate_norm_per_tensor);
               }
               C10_CUDA_KERNEL_LAUNCH_CHECK();
               const at::cuda::OptionalCUDAGuard device_guard(
@@ -518,27 +580,36 @@ std::vector<Tensor> foreach_tensor_norm_cuda(
                 if (p == static_cast<double>(1)) {
                   lpnorm_cleanup<scalar_t, NormType::L1, out_t>
                       <<<num_tensors_this_kernel, 512, 0, stream>>>(
+                          global_norm.mutable_data_ptr<out_t>(),
                           output_per_tensor.const_data_ptr<out_opmath_t>() +
                               i * MAX_TENSORS_PER_KERNEL *
                                   max_chunks_per_tensor,
                           addr_struct,
-                          max_chunks_per_tensor);
+                          max_chunks_per_tensor,
+                          calculate_global_norm,
+                          calculate_norm_per_tensor);
                 } else if (p == static_cast<double>(2)) {
                   lpnorm_cleanup<scalar_t, NormType::L2, out_t>
                       <<<num_tensors_this_kernel, 512, 0, stream>>>(
+                          global_norm.mutable_data_ptr<out_t>(),
                           output_per_tensor.const_data_ptr<out_opmath_t>() +
                               i * MAX_TENSORS_PER_KERNEL *
                                   max_chunks_per_tensor,
                           addr_struct,
-                          max_chunks_per_tensor);
+                          max_chunks_per_tensor,
+                          calculate_global_norm,
+                          calculate_norm_per_tensor);
                 } else if (p == std::numeric_limits<double>::infinity()) {
                   lpnorm_cleanup<scalar_t, NormType::LInf, out_t>
                       <<<num_tensors_this_kernel, 512, 0, stream>>>(
+                          global_norm.mutable_data_ptr<out_t>(),
                           output_per_tensor.const_data_ptr<out_opmath_t>() +
                               i * MAX_TENSORS_PER_KERNEL *
                                   max_chunks_per_tensor,
                           addr_struct,
-                          max_chunks_per_tensor);
+                          max_chunks_per_tensor,
+                          calculate_global_norm,
+                          calculate_norm_per_tensor);
                 }
                 C10_CUDA_KERNEL_LAUNCH_CHECK();
               }
@@ -548,17 +619,45 @@ std::vector<Tensor> foreach_tensor_norm_cuda(
   // correctly assign values to only non-empty slots, as the empty slots should
   // get skipped
   std::vector<Tensor> result;
-  result.reserve(ntensors);
-  int i = 0;
-  for (const auto& t : tensors) {
-    if (t.numel() != 0) {
-      result.emplace_back(vec_res[i]);
-      i++;
-    } else {
-      result.emplace_back(at::zeros({}, res_option));
+  if (calculate_norm_per_tensor) {
+    result.reserve(ntensors);
+    int i = 0;
+    for (const auto& t : tensors) {
+      if (t.numel() != 0) {
+        result.emplace_back(vec_res[i]);
+        i++;
+      } else {
+        result.emplace_back(at::zeros({}, res_option));
+      }
     }
   }
-  return result;
+  return std::make_pair(result, global_norm);
+}
+
+std::vector<Tensor> foreach_tensor_norm_cuda(
+    TensorList tensors,
+    const Scalar& ord,
+    std::optional<ScalarType> dtype) {
+  return _foreach_tensor_norm_cuda_impl(
+             tensors,
+             ord,
+             dtype,
+             /* calculate_global_norm */ false,
+             /* calculate_norm_per_tensor */ true)
+      .first;
+}
+
+std::vector<Tensor> foreach_tensor_global_norm_cuda(
+    TensorList tensors,
+    const Scalar& ord,
+    std::optional<ScalarType> dtype) {
+  return _foreach_tensor_norm_cuda_impl(
+             tensors,
+             ord,
+             dtype,
+             /* calculate_global_norm */ true,
+             /* calculate_norm_per_tensor */ false)
+      .second;
 }
 
 #undef AT_DISPATCH_OUT_DTYPES
