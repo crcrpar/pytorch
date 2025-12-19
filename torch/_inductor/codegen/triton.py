@@ -2488,7 +2488,13 @@ class TritonKernel(SIMDKernel[TritonCSEVariable]):
         self.optimize_mask: bool = optimize_mask
         self.fixed_config = fixed_config
         self.is_combo_kernel: bool = is_combo_kernel
-        super().__init__(tiling, **kwargs)
+        # this value is used at the end of `__init__`. caching here to avoid for explicitness.
+        override_persistent_reduction = kwargs.get("override_persistent_reduction")
+        super().__init__(
+            tiling,
+            override_persistent_reduction=override_persistent_reduction,
+            **kwargs,
+        )
         self.cse = TritonCSE(self.newvar_prefix, self.suffix)
         # Cache of values that can be reused for the prologue.
         self.prologue_cache: dict[str, str] = {}
@@ -2526,6 +2532,14 @@ class TritonKernel(SIMDKernel[TritonCSEVariable]):
         self.has_load_with_contiguous_rdim = False
         # We track the store name since a store can be canceled later
         self.stores_with_contiguous_rdim: list[str] = []
+
+        # If the kernel does no reductions, `self.persistent_reduction` should be `False`
+        if (
+            override_persistent_reduction is None
+            and self.persistent_reduction
+            and not any(tree.is_reduction for tree in self.range_trees)
+        ):
+            self.persistent_reduction = False
 
     @staticmethod
     def _has_stride1_on_rdim(index) -> bool:
